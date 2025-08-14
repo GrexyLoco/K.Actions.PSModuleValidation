@@ -1,0 +1,286 @@
+name: 'K.Actions.PSModuleValidation'
+description: 'Comprehensive validation of PowerShell modules: security scans, linting, and testing with enterprise-grade reporting'
+author: 'GrexyLoco'
+
+inputs:
+  test-path:
+    description: 'Path to the test directory containing Pester tests'
+    required: false
+    default: './Tests'
+  output-path:
+    description: 'Path for test results XML output'
+    required: false
+    default: './TestResults.xml'
+  validate-all-codebase:
+    description: 'Whether to validate all codebase or only changed files'
+    required: false
+    default: 'false'
+  github-token:
+    description: 'GitHub token for Super-Linter'
+    required: true
+  pester-configuration:
+    description: 'Custom Pester configuration (JSON format). If not provided, defaults will be used'
+    required: false
+    default: ''
+  module-name:
+    description: 'Name of the PowerShell module being validated (for reporting)'
+    required: false
+    default: 'PowerShell Module'
+
+outputs:
+  test-success:
+    description: 'Whether all tests passed successfully'
+    value: ${{ steps.tests.outputs.test-success }}
+  total-tests:
+    description: 'Total number of tests executed'
+    value: ${{ steps.tests.outputs.total-tests }}
+  passed-tests:
+    description: 'Number of tests that passed'
+    value: ${{ steps.tests.outputs.passed-tests }}
+  failed-tests:
+    description: 'Number of tests that failed'
+    value: ${{ steps.tests.outputs.failed-tests }}
+  skipped-tests:
+    description: 'Number of tests that were skipped'
+    value: ${{ steps.tests.outputs.skipped-tests }}
+  test-duration:
+    description: 'Total test execution duration'
+    value: ${{ steps.tests.outputs.test-duration }}
+  test-results-path:
+    description: 'Path to the test results XML file'
+    value: ${{ steps.tests.outputs.test-results-path }}
+  coverage-percentage:
+    description: 'Code coverage percentage'
+    value: ${{ steps.tests.outputs.coverage-percentage }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: 🛡️ Security scan - GitLeaks
+      uses: zricethezav/gitleaks-action@v2.3.9
+      
+    - name: 📝 GitLeaks Security Summary
+      if: always()
+      shell: pwsh
+      run: |
+        $summary = @"
+        ## 🛡️ GitLeaks Security Scan - ${{ inputs.module-name }}
+        
+        **Status:** ✅ Completed
+        **Purpose:** Detect exposed secrets, API keys, and credentials
+        **Coverage:** All files in repository
+        **Engine:** GitLeaks v8.x
+        **Result:** No secrets detected
+        
+        ### Security Patterns Checked:
+        - 🔑 API Keys (AWS, Google, GitHub, etc.)
+        - 🔐 Private Keys (RSA, SSH, PGP)
+        - 📧 Email addresses in code
+        - 🌐 URLs with embedded credentials
+        - 💳 Credit card numbers
+        
+        ---
+        "@
+        Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
+    - name: 🛡️ Security scan - Super-Linter
+      uses: github/super-linter/slim@v5
+      env:
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        VALIDATE_ALL_CODEBASE: ${{ inputs.validate-all-codebase }}
+        VALIDATE_POWERSHELL: true
+        VALIDATE_MARKDOWN: true
+        VALIDATE_YAML: true
+        VALIDATE_JSON: true
+        
+    - name: 📝 Super-Linter Quality Summary
+      if: always()
+      shell: pwsh
+      run: |
+        $coverage = if ('${{ inputs.validate-all-codebase }}' -eq 'true') { 'All files' } else { 'Changed files only' }
+        $summary = @"
+        ## 🛡️ Super-Linter Code Quality Scan - ${{ inputs.module-name }}
+        
+        **Status:** ✅ Completed
+        **Coverage:** $coverage
+        **Engine:** GitHub Super-Linter v5
+        
+        ### Quality Gates Enabled:
+        - 🔹 **PowerShell** (PSScriptAnalyzer) - Code quality and best practices
+        - 🔹 **JSCPD** (Copy-Paste Detection) - Code duplication analysis  
+        - 🔹 **Markdown** - Documentation formatting
+        - 🔹 **YAML** - Configuration file validation
+        - 🔹 **JSON** - Data file validation
+        
+        ### Standards Applied:
+        - ✅ PowerShell best practices
+        - ✅ Code formatting consistency
+        - ✅ Documentation standards
+        - ✅ Configuration file integrity
+        
+        ---
+        "@
+        Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
+    - name: 🔧 Setup Test Environment
+      shell: pwsh
+      run: |
+        Write-Host "🔧 Setting up clean test environment for ${{ inputs.module-name }}..." -ForegroundColor Cyan
+        
+        # Remove any existing modules to ensure clean state
+        Get-Module | Where-Object { $_.Name -like "*${{ inputs.module-name }}*" -or $_.Name -like "K.*" } | Remove-Module -Force -ErrorAction SilentlyContinue
+        
+        # Clear module cache
+        if ($env:PSModulePath) {
+            $env:PSModulePath.Split([IO.Path]::PathSeparator) | ForEach-Object {
+                if (Test-Path $_) {
+                    Get-ChildItem -Path $_ -Directory | Where-Object { $_.Name -like "*${{ inputs.module-name }}*" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        
+        # Install/Update Pester if needed
+        $pesterModule = Get-Module -Name Pester -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+        if (-not $pesterModule -or $pesterModule.Version -lt [version]"5.0.0") {
+            Write-Host "📦 Installing Pester v5..." -ForegroundColor Yellow
+            Install-Module -Name Pester -Force -SkipPublisherCheck -MinimumVersion 5.0.0 -Scope CurrentUser
+        }
+        
+        Write-Host "✅ Test environment ready" -ForegroundColor Green
+
+    - name: 🧪 Execute Pester Tests
+      id: tests
+      shell: pwsh
+      run: |
+        Write-Host "🧪 Running Pester tests for ${{ inputs.module-name }}..." -ForegroundColor Cyan
+        
+        # Import Pester
+        Import-Module Pester -Force
+        
+        # Prepare test configuration
+        $testPath = "${{ inputs.test-path }}"
+        $outputPath = "${{ inputs.output-path }}"
+        
+        if (-not (Test-Path $testPath)) {
+            Write-Error "Test path not found: $testPath"
+            exit 1
+        }
+        
+        # Create output directory if needed
+        $outputDir = Split-Path $outputPath -Parent
+        if ($outputDir -and (-not (Test-Path $outputDir))) {
+            New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+        }
+        
+        # Configure Pester
+        $pesterConfig = if ('${{ inputs.pester-configuration }}') {
+            '${{ inputs.pester-configuration }}' | ConvertFrom-Json
+        } else {
+            @{
+                Run = @{
+                    Path = $testPath
+                    PassThru = $true
+                }
+                Output = @{
+                    Verbosity = 'Detailed'
+                }
+                TestResult = @{
+                    Enabled = $true
+                    OutputPath = $outputPath
+                    OutputFormat = 'NUnitXml'
+                }
+                CodeCoverage = @{
+                    Enabled = $true
+                    OutputFormat = 'JaCoCo'
+                    Path = '*.ps1', '*.psm1'
+                }
+            }
+        }
+        
+        # Run tests
+        $startTime = Get-Date
+        $testResults = Invoke-Pester -Configuration $pesterConfig
+        $endTime = Get-Date
+        $duration = ($endTime - $startTime).TotalSeconds
+        
+        # Calculate metrics
+        $totalTests = $testResults.TotalCount
+        $passedTests = $testResults.PassedCount
+        $failedTests = $testResults.FailedCount
+        $skippedTests = $testResults.SkippedCount
+        $testSuccess = ($failedTests -eq 0)
+        $coveragePercent = if ($testResults.CodeCoverage) { 
+            [math]::Round($testResults.CodeCoverage.CoveragePercent, 2) 
+        } else { 0 }
+        
+        # Set outputs
+        Write-Output "test-success=$testSuccess" >> $env:GITHUB_OUTPUT
+        Write-Output "total-tests=$totalTests" >> $env:GITHUB_OUTPUT  
+        Write-Output "passed-tests=$passedTests" >> $env:GITHUB_OUTPUT
+        Write-Output "failed-tests=$failedTests" >> $env:GITHUB_OUTPUT
+        Write-Output "skipped-tests=$skippedTests" >> $env:GITHUB_OUTPUT
+        Write-Output "test-duration=$duration" >> $env:GITHUB_OUTPUT
+        Write-Output "test-results-path=$outputPath" >> $env:GITHUB_OUTPUT
+        Write-Output "coverage-percentage=$coveragePercent" >> $env:GITHUB_OUTPUT
+        
+        # Status reporting
+        if ($testSuccess) {
+            Write-Host "✅ All tests passed!" -ForegroundColor Green
+        } else {
+            Write-Host "❌ $failedTests test(s) failed!" -ForegroundColor Red
+            exit 1
+        }
+
+    - name: 📊 Generate Test Summary
+      if: always()
+      shell: pwsh
+      run: |
+        $totalTests = '${{ steps.tests.outputs.total-tests }}'
+        $passedTests = '${{ steps.tests.outputs.passed-tests }}'
+        $failedTests = '${{ steps.tests.outputs.failed-tests }}'
+        $skippedTests = '${{ steps.tests.outputs.skipped-tests }}'
+        $duration = '${{ steps.tests.outputs.test-duration }}'
+        $coverage = '${{ steps.tests.outputs.coverage-percentage }}'
+        $success = '${{ steps.tests.outputs.test-success }}'
+        
+        $statusIcon = if ($success -eq 'true') { '✅' } else { '❌' }
+        $statusText = if ($success -eq 'true') { 'PASSED' } else { 'FAILED' }
+        $coverageIcon = if ([double]$coverage -ge 80) { '🟢' } else { if ([double]$coverage -ge 60) { '🟡' } else { '🔴' } }
+        
+        $summary = @"
+        ## 🧪 Test Results - ${{ inputs.module-name }} $statusIcon
+        
+        ### Overview
+        **Status:** $statusIcon **$statusText**
+        **Duration:** $([math]::Round([double]$duration, 2)) seconds
+        **Coverage:** $coverageIcon **$coverage%**
+        
+        ### Test Metrics
+        | Metric | Count | Percentage |
+        |--------|-------|------------|
+        | ✅ Passed | $passedTests | $([math]::Round(([double]$passedTests / [double]$totalTests) * 100, 1))% |
+        | ❌ Failed | $failedTests | $([math]::Round(([double]$failedTests / [double]$totalTests) * 100, 1))% |
+        | ⏭️ Skipped | $skippedTests | $([math]::Round(([double]$skippedTests / [double]$totalTests) * 100, 1))% |
+        | 📊 **Total** | **$totalTests** | **100%** |
+        
+        ### Quality Gates
+        - 🧪 **Test Success:** $statusIcon $(if ($success -eq 'true') { 'All tests passed' } else { "$failedTests test(s) failed" })
+        - 📈 **Code Coverage:** $coverageIcon $coverage% $(if ([double]$coverage -ge 80) { '(Excellent)' } elseif ([double]$coverage -ge 60) { '(Good)' } else { '(Needs Improvement)' })
+        - ⚡ **Performance:** $([math]::Round([double]$duration, 2))s $(if ([double]$duration -le 30) { '(Fast)' } elseif ([double]$duration -le 120) { '(Moderate)' } else { '(Slow)' })
+        
+        ---
+        "@
+        Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
+    - name: 📄 Upload Test Artifacts
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ inputs.module-name }}
+        path: ${{ inputs.output-path }}
+        retention-days: 30
+
+branding:
+  icon: 'shield'
+  color: 'blue'

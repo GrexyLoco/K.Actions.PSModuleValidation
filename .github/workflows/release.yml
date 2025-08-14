@@ -1,0 +1,207 @@
+name: 🚀 Release K.Actions.PSModuleValidation
+
+on:
+  push:
+    branches: [ master, main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: 'Type of release'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - 'patch'
+        - 'minor'
+        - 'major'
+      force-release:
+        description: 'Force release even if no changes'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  # 🧪 First run ALL tests - Release ONLY if tests pass!
+  run-tests:
+    name: 🧪 Run Test Suite
+    uses: ./.github/workflows/test.yml
+    
+  # 📦 Release job depends on successful tests
+  create-release:
+    name: 📦 Create Release
+    runs-on: ubuntu-latest
+    needs: run-tests
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (needs.run-tests.outputs.validation-success == 'true' || github.event.inputs.force-release == 'true')
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔍 Determine Next Version
+        id: version
+        shell: pwsh
+        run: |
+          Write-Host "🔍 Determining next version..." -ForegroundColor Cyan
+          
+          # Get latest tag
+          $latestTag = git describe --tags --abbrev=0 2>$null
+          if (-not $latestTag) {
+              $latestTag = "v0.0.0"
+          }
+          
+          Write-Host "Latest tag: $latestTag" -ForegroundColor Yellow
+          
+          # Parse version
+          if ($latestTag -match '^v?(\d+)\.(\d+)\.(\d+)') {
+              $major = [int]$matches[1]
+              $minor = [int]$matches[2]
+              $patch = [int]$matches[3]
+          } else {
+              $major = 1
+              $minor = 0
+              $patch = 0
+          }
+          
+          # Determine release type
+          $releaseType = '${{ github.event.inputs.release-type }}' -or 'patch'
+          
+          # Calculate next version
+          switch ($releaseType) {
+              'major' { 
+                  $major++
+                  $minor = 0
+                  $patch = 0
+              }
+              'minor' { 
+                  $minor++
+                  $patch = 0
+              }
+              default { 
+                  $patch++
+              }
+          }
+          
+          $nextVersion = "v$major.$minor.$patch"
+          Write-Host "Next version: $nextVersion" -ForegroundColor Green
+          
+          Write-Output "version=$nextVersion" >> $env:GITHUB_OUTPUT
+
+      - name: 📝 Generate Changelog
+        id: changelog
+        shell: pwsh
+        run: |
+          Write-Host "📝 Generating changelog..." -ForegroundColor Cyan
+          
+          $version = '${{ steps.version.outputs.version }}'
+          $latestTag = git describe --tags --abbrev=0 2>$null
+          
+          if ($latestTag) {
+              $commits = git log --pretty=format:"- %s" "$latestTag..HEAD"
+          } else {
+              $commits = git log --pretty=format:"- %s"
+          }
+          
+          $changelog = @"
+          ## What's Changed in $version
+          
+          ### 🚀 Features & Improvements
+          $($commits -join "`n")
+          
+          ### 🛡️ Action Capabilities
+          - **Security Scanning**: GitLeaks + Super-Linter
+          - **PowerShell Testing**: Pester v5 with code coverage
+          - **Enhanced Reporting**: Rich GitHub step summaries
+          - **Enterprise Ready**: Fully parametrized for reuse
+          
+          ### 📋 Usage
+          \`\`\`yaml
+          - name: Validate PowerShell Module
+            uses: GrexyLoco/K.Actions.PSModuleValidation@$version
+            with:
+              github-token: \${{ secrets.GITHUB_TOKEN }}
+              module-name: 'YourModule'
+          \`\`\`
+          
+          **Full Changelog**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/compare/$latestTag...$version
+          "@
+          
+          # Escape for GitHub output
+          $changelog = $changelog -replace '"','\"' -replace '\r?\n','%0A'
+          Write-Output "changelog=$changelog" >> $env:GITHUB_OUTPUT
+
+      - name: 🏷️ Create Release Tag
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git tag -a $version -m "🚀 Release $version
+
+          Automated release of K.Actions.PSModuleValidation
+          
+          Features:
+          - Comprehensive PowerShell module validation
+          - Security scanning with GitLeaks and Super-Linter  
+          - Pester v5 testing with code coverage
+          - Enhanced GitHub step summaries
+          - Enterprise-ready parametrization"
+          
+          git push origin $version
+
+      - name: 📦 Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: 🚀 K.Actions.PSModuleValidation ${{ steps.version.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
+      - name: 📋 Generate Release Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $testSuccess = '${{ needs.run-tests.outputs.validation-success }}'
+          
+          $summary = @"
+          ## 🚀 Release Complete - $version
+          
+          ### 📊 Release Status
+          **Version:** $version
+          **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })
+          **Status:** $(if ($testSuccess -eq 'true') { '✅ RELEASED' } else { '❌ BLOCKED' })
+          
+          ### 🎯 Action Features
+          - 🛡️ **Security Scanning** - GitLeaks & Super-Linter
+          - 🧪 **PowerShell Testing** - Pester v5 with coverage
+          - 📊 **Rich Reporting** - Enhanced GitHub summaries
+          - ⚙️ **Configurable** - Enterprise-ready parameters
+          
+          ### 📋 Usage Instructions
+          \`\`\`yaml
+          uses: GrexyLoco/K.Actions.PSModuleValidation@$version
+          \`\`\`
+          
+          ### 🔗 Links
+          - **Repository**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation
+          - **Release**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/releases/tag/$version
+          - **Documentation**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation#readme
+          
+          ---
+          **Action is ready for production use across all PowerShell modules! 🎉**
+          "@
+          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY

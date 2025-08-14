@@ -101,7 +101,7 @@ jobs:
         id: test-action
         uses: ./
         with:
-          test-path: '${{ env.TEST_MODULE_PATH }}/Tests'
+          # test-path: Leave empty to test auto-discovery
           output-path: '${{ env.TEST_MODULE_PATH }}/TestResults.xml'
           validate-all-codebase: 'true'
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -4,9 +4,9 @@ author: 'GrexyLoco'
 
 inputs:
   test-path:
-    description: 'Path to the test directory containing Pester tests'
+    description: 'Path to the test directory containing Pester tests. If not specified, auto-discovery will search for test files up to 5 levels deep.'
     required: false
-    default: './Tests'
+    default: ''
   output-path:
     description: 'Path for test results XML output'
     required: false
@@ -137,7 +137,7 @@ runs:
     - name: 🔧 Setup Test Environment
       shell: pwsh
       run: |
-        Write-Host "🔧 Setting up clean test environment for ${{ inputs.module-name }}..." -ForegroundColor Cyan
+        Write-Host "🔧 Setting up test environment for ${{ inputs.module-name }}..." -ForegroundColor Cyan
         
         # Remove any existing modules to ensure clean state
         Get-Module | Where-Object { $_.Name -like "*${{ inputs.module-name }}*" -or $_.Name -like "K.*" } | Remove-Module -Force -ErrorAction SilentlyContinue
@@ -160,6 +160,101 @@ runs:
         
         Write-Host "✅ Test environment ready" -ForegroundColor Green
 
+    - name: 🔍 Discover Test Files
+      id: discover
+      shell: pwsh
+      run: |
+        Write-Host "🔍 Discovering test files..." -ForegroundColor Cyan
+        
+        $testPath = '${{ inputs.test-path }}'.Trim()
+        $discoveredPaths = @()
+        $testFiles = @()
+        
+        if ($testPath -and $testPath -ne '') {
+            # Use specified test path
+            Write-Host "📂 Using specified test path: $testPath" -ForegroundColor Yellow
+            
+            if (Test-Path $testPath) {
+                $discoveredPaths += $testPath
+                $testFiles = Get-ChildItem -Path $testPath -Filter "*.Tests.ps1" -Recurse -File
+                Write-Host "✅ Found $($testFiles.Count) test files in specified path" -ForegroundColor Green
+            } else {
+                Write-Host "❌ Specified test path does not exist: $testPath" -ForegroundColor Red
+                Write-Output "test-path-exists=false" >> $env:GITHUB_OUTPUT
+                Write-Output "discovered-paths=" >> $env:GITHUB_OUTPUT
+                Write-Output "test-files-count=0" >> $env:GITHUB_OUTPUT
+                exit 1
+            }
+        } else {
+            # Auto-discovery mode
+            Write-Host "🔍 Auto-discovering test files (up to 5 levels deep)..." -ForegroundColor Yellow
+            
+            # Common test directory patterns
+            $testPatterns = @(
+                "Tests", "Test", "tests", "test",
+                "UnitTests", "unittests", "Pester",
+                "specs", "Specs"
+            )
+            
+            # Search for test directories
+            for ($depth = 0; $depth -le 5; $depth++) {
+                $searchPath = if ($depth -eq 0) { "." } else { ("*/" * $depth).TrimEnd('/') }
+                
+                foreach ($pattern in $testPatterns) {
+                    $searchPattern = if ($depth -eq 0) { $pattern } else { "$searchPath/$pattern" }
+                    $foundDirs = Get-ChildItem -Path $searchPattern -Directory -ErrorAction SilentlyContinue
+                    
+                    foreach ($dir in $foundDirs) {
+                        if ($dir.FullName -notin $discoveredPaths) {
+                            $discoveredPaths += $dir.FullName
+                            Write-Host "📁 Found test directory: $($dir.FullName)" -ForegroundColor Cyan
+                        }
+                    }
+                }
+            }
+            
+            # Search for test files directly (for flat structures)
+            for ($depth = 0; $depth -le 5; $depth++) {
+                $searchPath = if ($depth -eq 0) { "." } else { ("*/" * $depth).TrimEnd('/') }
+                $searchPattern = if ($depth -eq 0) { "*.Tests.ps1" } else { "$searchPath/*.Tests.ps1" }
+                
+                $foundFiles = Get-ChildItem -Path $searchPattern -File -ErrorAction SilentlyContinue
+                foreach ($file in $foundFiles) {
+                    $parentDir = $file.Directory.FullName
+                    if ($parentDir -notin $discoveredPaths) {
+                        $discoveredPaths += $parentDir
+                        Write-Host "📄 Found test files in: $parentDir" -ForegroundColor Cyan
+                    }
+                }
+            }
+            
+            # Collect all test files from discovered paths
+            foreach ($path in $discoveredPaths) {
+                $files = Get-ChildItem -Path $path -Filter "*.Tests.ps1" -File -ErrorAction SilentlyContinue
+                $testFiles += $files
+            }
+            
+            Write-Host "🔍 Auto-discovery complete:" -ForegroundColor Green
+            Write-Host "   📁 Discovered paths: $($discoveredPaths.Count)" -ForegroundColor Green
+            Write-Host "   📄 Test files found: $($testFiles.Count)" -ForegroundColor Green
+        }
+        
+        # Set outputs
+        $pathsString = $discoveredPaths -join ';'
+        Write-Output "test-path-exists=true" >> $env:GITHUB_OUTPUT
+        Write-Output "discovered-paths=$pathsString" >> $env:GITHUB_OUTPUT
+        Write-Output "test-files-count=$($testFiles.Count)" >> $env:GITHUB_OUTPUT
+        
+        # Display discovered test files
+        if ($testFiles.Count -gt 0) {
+            Write-Host "📋 Discovered test files:" -ForegroundColor Green
+            foreach ($file in $testFiles) {
+                Write-Host "   ✅ $($file.FullName)" -ForegroundColor Gray
+            }
+        } else {
+            Write-Host "⚠️ No test files (*.Tests.ps1) found" -ForegroundColor Yellow
+        }
+
     - name: 🧪 Execute Pester Tests
       id: tests
       shell: pwsh
@@ -169,13 +264,31 @@ runs:
         # Import Pester
         Import-Module Pester -Force
         
-        # Prepare test configuration
-        $testPath = "${{ inputs.test-path }}"
-        $outputPath = "${{ inputs.output-path }}"
+        # Get discovery results
+        $testFilesCount = [int]'${{ steps.discover.outputs.test-files-count }}'
+        $discoveredPaths = '${{ steps.discover.outputs.discovered-paths }}'.Split(';', [StringSplitOptions]::RemoveEmptyEntries)
         
-        if (-not (Test-Path $testPath)) {
-            Write-Error "Test path not found: $testPath"
-            exit 1
+        if ($testFilesCount -eq 0) {
+            Write-Host "⚠️ No test files found - this is a WARNING, not an error" -ForegroundColor Yellow
+            
+            # Set outputs for no tests scenario
+            Write-Output "test-success=true" >> $env:GITHUB_OUTPUT
+            Write-Output "total-tests=0" >> $env:GITHUB_OUTPUT  
+            Write-Output "passed-tests=0" >> $env:GITHUB_OUTPUT
+            Write-Output "failed-tests=0" >> $env:GITHUB_OUTPUT
+            Write-Output "skipped-tests=0" >> $env:GITHUB_OUTPUT
+            Write-Output "test-duration=0" >> $env:GITHUB_OUTPUT
+            Write-Output "test-results-path=" >> $env:GITHUB_OUTPUT
+            Write-Output "coverage-percentage=0" >> $env:GITHUB_OUTPUT
+            
+            Write-Host "✅ No tests to run - continuing without error" -ForegroundColor Green
+            return
+        }
+        
+        # Prepare test configuration
+        $outputPath = "${{ inputs.output-path }}"
+        if (-not $outputPath -or $outputPath -eq '') {
+            $outputPath = "./TestResults.xml"
         }
         
         # Create output directory if needed
@@ -184,13 +297,21 @@ runs:
             New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
         }
         
+        # Use discovered paths or specific test files
+        $testPaths = if ($discoveredPaths.Count -gt 0) { $discoveredPaths } else { @('.') }
+        
+        Write-Host "📋 Test configuration:" -ForegroundColor Cyan
+        Write-Host "   📁 Test paths: $($testPaths -join ', ')" -ForegroundColor Gray
+        Write-Host "   📄 Output path: $outputPath" -ForegroundColor Gray
+        Write-Host "   📊 Test files found: $testFilesCount" -ForegroundColor Gray
+        
         # Configure Pester
         $pesterConfig = if ('${{ inputs.pester-configuration }}') {
             '${{ inputs.pester-configuration }}' | ConvertFrom-Json
         } else {
             @{
                 Run = @{
-                    Path = $testPath
+                    Path = $testPaths
                     PassThru = $true
                 }
                 Output = @{
@@ -204,26 +325,48 @@ runs:
                 CodeCoverage = @{
                     Enabled = $true
                     OutputFormat = 'JaCoCo'
-                    Path = '*.ps1', '*.psm1'
+                    Path = @('*.ps1', '*.psm1')
                 }
             }
         }
         
         # Run tests
         $startTime = Get-Date
-        $testResults = Invoke-Pester -Configuration $pesterConfig
-        $endTime = Get-Date
-        $duration = ($endTime - $startTime).TotalSeconds
-        
-        # Calculate metrics
-        $totalTests = $testResults.TotalCount
-        $passedTests = $testResults.PassedCount
-        $failedTests = $testResults.FailedCount
-        $skippedTests = $testResults.SkippedCount
-        $testSuccess = ($failedTests -eq 0)
-        $coveragePercent = if ($testResults.CodeCoverage) { 
-            [math]::Round($testResults.CodeCoverage.CoveragePercent, 2) 
-        } else { 0 }
+        try {
+            $testResults = Invoke-Pester -Configuration $pesterConfig
+            $endTime = Get-Date
+            $duration = ($endTime - $startTime).TotalSeconds
+            
+            # Calculate metrics
+            $totalTests = $testResults.TotalCount
+            $passedTests = $testResults.PassedCount
+            $failedTests = $testResults.FailedCount
+            $skippedTests = $testResults.SkippedCount
+            $testSuccess = ($failedTests -eq 0)
+            $coveragePercent = if ($testResults.CodeCoverage) { 
+                [math]::Round($testResults.CodeCoverage.CoveragePercent, 2) 
+            } else { 0 }
+            
+            Write-Host "📊 Test results summary:" -ForegroundColor Cyan
+            Write-Host "   📊 Total: $totalTests" -ForegroundColor Gray
+            Write-Host "   ✅ Passed: $passedTests" -ForegroundColor Green
+            Write-Host "   ❌ Failed: $failedTests" -ForegroundColor $(if ($failedTests -eq 0) { 'Gray' } else { 'Red' })
+            Write-Host "   ⏭️ Skipped: $skippedTests" -ForegroundColor Gray
+            Write-Host "   ⏱️ Duration: $([math]::Round($duration, 2))s" -ForegroundColor Gray
+            Write-Host "   📈 Coverage: $coveragePercent%" -ForegroundColor Gray
+            
+        } catch {
+            Write-Host "❌ Error running tests: $($_.Exception.Message)" -ForegroundColor Red
+            
+            # Set failure outputs
+            $totalTests = 0
+            $passedTests = 0
+            $failedTests = 1
+            $skippedTests = 0
+            $testSuccess = $false
+            $duration = 0
+            $coveragePercent = 0
+        }
         
         # Set outputs
         Write-Output "test-success=$testSuccess" >> $env:GITHUB_OUTPUT
@@ -236,7 +379,9 @@ runs:
         Write-Output "coverage-percentage=$coveragePercent" >> $env:GITHUB_OUTPUT
         
         # Status reporting
-        if ($testSuccess) {
+        if ($totalTests -eq 0) {
+            Write-Host "⚠️ No tests were executed (no test files found)" -ForegroundColor Yellow
+        } elseif ($testSuccess) {
             Write-Host "✅ All tests passed!" -ForegroundColor Green
         } else {
             Write-Host "❌ $failedTests test(s) failed!" -ForegroundColor Red
@@ -254,18 +399,59 @@ runs:
         $duration = '${{ steps.tests.outputs.test-duration }}'
         $coverage = '${{ steps.tests.outputs.coverage-percentage }}'
         $success = '${{ steps.tests.outputs.test-success }}'
+        $testFilesCount = '${{ steps.discover.outputs.test-files-count }}'
+        $discoveredPaths = '${{ steps.discover.outputs.discovered-paths }}'
         
-        $statusIcon = if ($success -eq 'true') { '✅' } else { '❌' }
-        $statusText = if ($success -eq 'true') { 'PASSED' } else { 'FAILED' }
-        $coverageIcon = if ([double]$coverage -ge 80) { '🟢' } else { if ([double]$coverage -ge 60) { '🟡' } else { '🔴' } }
+        # Determine scenario
+        $isNoTestsScenario = [int]$totalTests -eq 0
         
-        $summary = @"
+        if ($isNoTestsScenario) {
+            # No tests found scenario
+            $statusIcon = '⚠️'
+            $statusText = 'NO TESTS FOUND'
+            $coverageIcon = '📊'
+            $discoveryInfo = if ($discoveredPaths) {
+                "**Searched paths:** $($discoveredPaths -replace ';', ', ')"
+            } else {
+                "**Search depth:** Up to 5 levels"
+            }
+            
+            $summary = @"
+        ## 🧪 Test Results - ${{ inputs.module-name }} $statusIcon
+        
+        ### Overview
+        **Status:** $statusIcon **$statusText**
+        **Test files found:** $testFilesCount
+        **Action result:** ✅ **PASSED** (No tests is not an error)
+        
+        ### Test Discovery
+        **Strategy:** $(if ('${{ inputs.test-path }}') { 'Specified path' } else { 'Auto-discovery' })
+        $discoveryInfo
+        **Patterns searched:** *.Tests.ps1
+        
+        ### Action Behavior
+        - ✅ **No Error**: Missing tests are treated as warning only
+        - 🔍 **Auto-Discovery**: Searched up to 5 levels deep for test files
+        - 📋 **Common Patterns**: Tests, Test, UnitTests, Pester, specs
+        - 💡 **Recommendation**: Add Pester tests in a 'Tests' directory
+        
+        ---
+        **Note:** This action only fails when tests exist but don't pass. No tests = Warning only! ⚠️
+        "@
+        } else {
+            # Tests were found and executed
+            $statusIcon = if ($success -eq 'true') { '✅' } else { '❌' }
+            $statusText = if ($success -eq 'true') { 'PASSED' } else { 'FAILED' }
+            $coverageIcon = if ([double]$coverage -ge 80) { '🟢' } else { if ([double]$coverage -ge 60) { '🟡' } else { '🔴' } }
+            
+            $summary = @"
         ## 🧪 Test Results - ${{ inputs.module-name }} $statusIcon
         
         ### Overview
         **Status:** $statusIcon **$statusText**
         **Duration:** $([math]::Round([double]$duration, 2)) seconds
         **Coverage:** $coverageIcon **$coverage%**
+        **Test files:** $testFilesCount
         
         ### Test Metrics
         | Metric | Count | Percentage |
@@ -275,6 +461,10 @@ runs:
         | ⏭️ Skipped | $skippedTests | $([math]::Round(([double]$skippedTests / [double]$totalTests) * 100, 1))% |
         | 📊 **Total** | **$totalTests** | **100%** |
         
+        ### Test Discovery
+        **Strategy:** $(if ('${{ inputs.test-path }}') { 'Specified path' } else { 'Auto-discovery' })
+        **Paths used:** $($discoveredPaths -replace ';', ', ')
+        
         ### Quality Gates
         - 🧪 **Test Success:** $statusIcon $(if ($success -eq 'true') { 'All tests passed' } else { "$failedTests test(s) failed" })
         - 📈 **Code Coverage:** $coverageIcon $coverage% $(if ([double]$coverage -ge 80) { '(Excellent)' } elseif ([double]$coverage -ge 60) { '(Good)' } else { '(Needs Improvement)' })
@@ -282,6 +472,8 @@ runs:
         
         ---
         "@
+        }
+        
         Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
     - name: 📄 Upload Test Artifacts

@@ -80,7 +80,7 @@ jobs:
 
 | Input | Description | Required | Default |
 |-------|-------------|----------|---------|
-| `test-path` | Path to the test directory containing Pester tests | No | `./Tests` |
+| `test-path` | Path to the test directory containing Pester tests. If empty, auto-discovery will search for test files up to 5 levels deep. | No | `''` (auto-discovery) |
 | `output-path` | Path for test results XML output | No | `./TestResults.xml` |
 | `validate-all-codebase` | Whether to validate all codebase or only changed files | No | `false` |
 | `github-token` | GitHub token for Super-Linter | **Yes** | - |
@@ -138,11 +138,26 @@ jobs:
 - **Flexible Configuration**: JSON-based configuration support
 - **Artifact Upload**: Test results automatically uploaded as artifacts
 
+### 🔍 Intelligent Test Discovery
+- **Auto-Discovery**: Automatically finds test files when no path specified
+- **Smart Search**: Searches up to 5 levels deep for test files
+- **Common Patterns**: Recognizes standard test directory names (Tests, Test, UnitTests, Pester, specs)
+- **Graceful Handling**: No tests found = Warning only, not failure
+- **Error Only When**: Tests exist but fail to pass
+
+### Test Directory Patterns
+The action recognizes these common test directory patterns:
+- `Tests` / `Test` / `tests` / `test`
+- `UnitTests` / `unittests`
+- `Pester`
+- `specs` / `Specs`
+
 ### Test Reporting
 - 📊 Comprehensive test metrics
 - 📈 Code coverage analysis
 - ⚡ Performance monitoring
 - 🎯 Quality gate validation
+- ⚠️ Warning for missing tests (not error)
 
 ## 📋 Requirements
 

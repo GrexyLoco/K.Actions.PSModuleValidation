@@ -31,6 +31,9 @@ outputs:
   test-success:
     description: 'Whether all tests passed successfully'
     value: ${{ steps.tests.outputs.test-success }}
+  has-pester-tests:
+    description: 'Whether any Pester tests were found and executed'
+    value: ${{ steps.tests.outputs.has-pester-tests }}
   total-tests:
     description: 'Total number of tests executed'
     value: ${{ steps.tests.outputs.total-tests }}
@@ -179,11 +182,12 @@ runs:
                 $testFiles = Get-ChildItem -Path $testPath -Filter "*.Tests.ps1" -Recurse -File
                 Write-Host "✅ Found $($testFiles.Count) test files in specified path" -ForegroundColor Green
             } else {
-                Write-Host "❌ Specified test path does not exist: $testPath" -ForegroundColor Red
+                Write-Host "⚠️ Specified test path does not exist: $testPath" -ForegroundColor Yellow
+                Write-Host "📋 This is treated as WARNING, not ERROR (no tests to run)" -ForegroundColor Yellow
                 Write-Output "test-path-exists=false" >> $env:GITHUB_OUTPUT
                 Write-Output "discovered-paths=" >> $env:GITHUB_OUTPUT
                 Write-Output "test-files-count=0" >> $env:GITHUB_OUTPUT
-                exit 1
+                # Continue execution - no tests is not an error condition
             }
         } else {
             # Auto-discovery mode
@@ -273,6 +277,7 @@ runs:
             
             # Set outputs for no tests scenario
             Write-Output "test-success=true" >> $env:GITHUB_OUTPUT
+            Write-Output "has-pester-tests=false" >> $env:GITHUB_OUTPUT
             Write-Output "total-tests=0" >> $env:GITHUB_OUTPUT  
             Write-Output "passed-tests=0" >> $env:GITHUB_OUTPUT
             Write-Output "failed-tests=0" >> $env:GITHUB_OUTPUT
@@ -370,6 +375,7 @@ runs:
         
         # Set outputs
         Write-Output "test-success=$testSuccess" >> $env:GITHUB_OUTPUT
+        Write-Output "has-pester-tests=true" >> $env:GITHUB_OUTPUT
         Write-Output "total-tests=$totalTests" >> $env:GITHUB_OUTPUT  
         Write-Output "passed-tests=$passedTests" >> $env:GITHUB_OUTPUT
         Write-Output "failed-tests=$failedTests" >> $env:GITHUB_OUTPUT
@@ -433,7 +439,8 @@ runs:
         - ✅ **No Error**: Missing tests are treated as warning only
         - 🔍 **Auto-Discovery**: Searched up to 5 levels deep for test files
         - 📋 **Common Patterns**: Tests, Test, UnitTests, Pester, specs
-        - 💡 **Recommendation**: Add Pester tests in a 'Tests' directory
+        - � **Output**: \`has-pester-tests=false\` indicates no tests were found
+        - �💡 **Recommendation**: Add Pester tests in a 'Tests' directory
         
         ---
         **Note:** This action only fails when tests exist but don't pass. No tests = Warning only! ⚠️

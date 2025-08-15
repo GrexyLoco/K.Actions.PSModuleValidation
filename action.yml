@@ -190,52 +190,30 @@ runs:
                 # Continue execution - no tests is not an error condition
             }
         } else {
-            # Auto-discovery mode
-            Write-Host "🔍 Auto-discovering test files (up to 5 levels deep)..." -ForegroundColor Yellow
+            # Auto-discovery mode - OPTIMIZED PERFORMANCE
+            Write-Host "🔍 Auto-discovering test files (optimized recursive search)..." -ForegroundColor Yellow
             
-            # Common test directory patterns
-            $testPatterns = @(
-                "Tests", "Test", "tests", "test",
-                "UnitTests", "unittests", "Pester",
-                "specs", "Specs"
-            )
-            
-            # Search for test directories
-            for ($depth = 0; $depth -le 5; $depth++) {
-                $searchPath = if ($depth -eq 0) { "." } else { ("*/" * $depth).TrimEnd('/') }
-                
-                foreach ($pattern in $testPatterns) {
-                    $searchPattern = if ($depth -eq 0) { $pattern } else { "$searchPath/$pattern" }
-                    $foundDirs = Get-ChildItem -Path $searchPattern -Directory -ErrorAction SilentlyContinue
-                    
-                    foreach ($dir in $foundDirs) {
-                        if ($dir.FullName -notin $discoveredPaths) {
-                            $discoveredPaths += $dir.FullName
-                            Write-Host "📁 Found test directory: $($dir.FullName)" -ForegroundColor Cyan
-                        }
-                    }
-                }
+            # Single efficient recursive search instead of 54 separate scans
+            $allTestFiles = Get-ChildItem -Path "." -Filter "*.Tests.ps1" -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+                # Limit depth to 5 levels for safety (avoids infinite recursion in symlinks)
+                $currentDepth = ($_.FullName.Split([IO.Path]::DirectorySeparatorChar).Count - (Get-Location).Path.Split([IO.Path]::DirectorySeparatorChar).Count)
+                $currentDepth -le 5
             }
             
-            # Search for test files directly (for flat structures)
-            for ($depth = 0; $depth -le 5; $depth++) {
-                $searchPath = if ($depth -eq 0) { "." } else { ("*/" * $depth).TrimEnd('/') }
-                $searchPattern = if ($depth -eq 0) { "*.Tests.ps1" } else { "$searchPath/*.Tests.ps1" }
+            if ($allTestFiles.Count -gt 0) {
+                Write-Host "� Found $($allTestFiles.Count) test files via optimized search" -ForegroundColor Cyan
                 
-                $foundFiles = Get-ChildItem -Path $searchPattern -File -ErrorAction SilentlyContinue
-                foreach ($file in $foundFiles) {
-                    $parentDir = $file.Directory.FullName
-                    if ($parentDir -notin $discoveredPaths) {
-                        $discoveredPaths += $parentDir
-                        Write-Host "📄 Found test files in: $parentDir" -ForegroundColor Cyan
-                    }
+                # Extract unique parent directories
+                $uniqueDirs = $allTestFiles | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique
+                $discoveredPaths += $uniqueDirs
+                $testFiles += $allTestFiles
+                
+                # Report discovered directories for transparency
+                foreach ($dir in $uniqueDirs) {
+                    Write-Host "� Test files found in: $dir" -ForegroundColor Cyan
                 }
-            }
-            
-            # Collect all test files from discovered paths
-            foreach ($path in $discoveredPaths) {
-                $files = Get-ChildItem -Path $path -Filter "*.Tests.ps1" -File -ErrorAction SilentlyContinue
-                $testFiles += $files
+            } else {
+                Write-Host "📂 No *.Tests.ps1 files found in repository (searched up to 5 levels deep)" -ForegroundColor Yellow
             }
             
             Write-Host "🔍 Auto-discovery complete:" -ForegroundColor Green

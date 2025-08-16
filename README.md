@@ -138,19 +138,20 @@ jobs:
 - **Flexible Configuration**: JSON-based configuration support
 - **Artifact Upload**: Test results automatically uploaded as artifacts
 
-### 🔍 Intelligent Test Discovery
-- **Auto-Discovery**: Automatically finds test files when no path specified
-- **Smart Search**: Searches up to 5 levels deep for test files
-- **Common Patterns**: Recognizes standard test directory names (Tests, Test, UnitTests, Pester, specs)
-- **Graceful Handling**: No tests found = Warning only, not failure
-- **Error Only When**: Tests exist but fail to pass
+### 🔍 Smart Test Discovery
+- **Auto-Discovery**: If no test path is specified, the action will recursively search up to 5 levels deep for folders named `Test` or `Tests`.
+- **Strict File Pattern**: Only files ending with `.Test.ps1` or `.Tests.ps1` inside these folders are considered valid Pester tests.
+- **Warning for Missing Tests**: If a test folder exists but no valid test files are found, a warning is issued (not an error).
+- **Error Only When**: Tests exist but fail to pass.
 
-### Test Directory Patterns
-The action recognizes these common test directory patterns:
-- `Tests` / `Test` / `tests` / `test`
-- `UnitTests` / `unittests`
-- `Pester`
-- `specs` / `Specs`
+#### Example Test Discovery Convention
+```
+YourModule/
+├── Tests/
+│   ├── MyFeature.Tests.ps1
+│   └── AnotherFeature.Test.ps1
+└── ...
+```
 
 ### Test Reporting
 - 📊 Comprehensive test metrics

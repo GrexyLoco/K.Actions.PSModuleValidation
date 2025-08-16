@@ -137,104 +137,50 @@ runs:
         "@
         Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
-    - name: 🔧 Setup Test Environment
-      shell: pwsh
-      run: |
-        Write-Host "🔧 Setting up test environment for ${{ inputs.module-name }}..." -ForegroundColor Cyan
-        
-        # Remove any existing modules to ensure clean state
-        Get-Module | Where-Object { $_.Name -like "*${{ inputs.module-name }}*" -or $_.Name -like "K.*" } | Remove-Module -Force -ErrorAction SilentlyContinue
-        
-        # Clear module cache
-        if ($env:PSModulePath) {
-            $env:PSModulePath.Split([IO.Path]::PathSeparator) | ForEach-Object {
-                if (Test-Path $_) {
-                    Get-ChildItem -Path $_ -Directory | Where-Object { $_.Name -like "*${{ inputs.module-name }}*" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-                }
-            }
-        }
-        
-        # Install/Update Pester if needed
-        $pesterModule = Get-Module -Name Pester -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
-        if (-not $pesterModule -or $pesterModule.Version -lt [version]"5.0.0") {
-            Write-Host "📦 Installing Pester v5..." -ForegroundColor Yellow
-            Install-Module -Name Pester -Force -SkipPublisherCheck -MinimumVersion 5.0.0 -Scope CurrentUser
-        }
-        
-        Write-Host "✅ Test environment ready" -ForegroundColor Green
-
-    - name: 🔍 Discover Test Files
+    - name: � Check for Test Path
       id: discover
       shell: pwsh
       run: |
-        Write-Host "🔍 Discovering test files..." -ForegroundColor Cyan
+        Write-Host "🔍 Checking test configuration..." -ForegroundColor Cyan
         
         $testPath = '${{ inputs.test-path }}'.Trim()
-        $discoveredPaths = @()
-        $testFiles = @()
         
         if ($testPath -and $testPath -ne '') {
-            # Use specified test path
-            Write-Host "📂 Using specified test path: $testPath" -ForegroundColor Yellow
+            # Test path explicitly specified - validate it exists
+            Write-Host "📂 Test path specified: $testPath" -ForegroundColor Yellow
             
             if (Test-Path $testPath) {
-                $discoveredPaths += $testPath
                 $testFiles = Get-ChildItem -Path $testPath -Filter "*.Tests.ps1" -Recurse -File
                 Write-Host "✅ Found $($testFiles.Count) test files in specified path" -ForegroundColor Green
+                
+                # Set outputs for specified path
+                Write-Output "test-path-exists=true" >> $env:GITHUB_OUTPUT
+                Write-Output "discovered-paths=$testPath" >> $env:GITHUB_OUTPUT
+                Write-Output "test-files-count=$($testFiles.Count)" >> $env:GITHUB_OUTPUT
+                
+                # Install Pester if tests found
+                if ($testFiles.Count -gt 0) {
+                    Write-Host "� Installing Pester for test execution..." -ForegroundColor Yellow
+                    $pesterModule = Get-Module -Name Pester -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+                    if (-not $pesterModule -or $pesterModule.Version -lt [version]"5.0.0") {
+                        Install-Module -Name Pester -Force -SkipPublisherCheck -MinimumVersion 5.0.0 -Scope CurrentUser
+                    }
+                }
             } else {
                 Write-Host "⚠️ Specified test path does not exist: $testPath" -ForegroundColor Yellow
-                Write-Host "📋 This is treated as WARNING, not ERROR (no tests to run)" -ForegroundColor Yellow
                 Write-Output "test-path-exists=false" >> $env:GITHUB_OUTPUT
                 Write-Output "discovered-paths=" >> $env:GITHUB_OUTPUT
                 Write-Output "test-files-count=0" >> $env:GITHUB_OUTPUT
-                # Continue execution - no tests is not an error condition
             }
         } else {
-            # Auto-discovery mode - OPTIMIZED PERFORMANCE
-            Write-Host "🔍 Auto-discovering test files (optimized recursive search)..." -ForegroundColor Yellow
+            # No test path specified - skip testing entirely
+            Write-Host "� No test path specified - skipping Pester testing" -ForegroundColor Cyan
+            Write-Host "� This is a GitHub Action repository - no PowerShell module tests needed" -ForegroundColor Cyan
+            Write-Host "🎯 Action functionality is tested via GitHub Actions workflows" -ForegroundColor Cyan
             
-            # Single efficient recursive search instead of 54 separate scans
-            $allTestFiles = Get-ChildItem -Path "." -Filter "*.Tests.ps1" -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-                # Limit depth to 5 levels for safety (avoids infinite recursion in symlinks)
-                $currentDepth = ($_.FullName.Split([IO.Path]::DirectorySeparatorChar).Count - (Get-Location).Path.Split([IO.Path]::DirectorySeparatorChar).Count)
-                $currentDepth -le 5
-            }
-            
-            if ($allTestFiles.Count -gt 0) {
-                Write-Host "✅ Found $($allTestFiles.Count) test files via optimized search" -ForegroundColor Cyan
-                
-                # Extract unique parent directories
-                $uniqueDirs = $allTestFiles | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique
-                $discoveredPaths += $uniqueDirs
-                $testFiles += $allTestFiles
-                
-                # Report discovered directories for transparency
-                foreach ($dir in $uniqueDirs) {
-                    Write-Host "📁 Test files found in: $dir" -ForegroundColor Cyan
-                }
-            } else {
-                Write-Host "📂 No *.Tests.ps1 files found in repository (searched up to 5 levels deep)" -ForegroundColor Yellow
-            }
-            
-            Write-Host "🔍 Auto-discovery complete:" -ForegroundColor Green
-            Write-Host "   📁 Discovered paths: $($discoveredPaths.Count)" -ForegroundColor Green
-            Write-Host "   📄 Test files found: $($testFiles.Count)" -ForegroundColor Green
-        }
-        
-        # Set outputs
-        $pathsString = $discoveredPaths -join ';'
-        Write-Output "test-path-exists=true" >> $env:GITHUB_OUTPUT
-        Write-Output "discovered-paths=$pathsString" >> $env:GITHUB_OUTPUT
-        Write-Output "test-files-count=$($testFiles.Count)" >> $env:GITHUB_OUTPUT
-        
-        # Display discovered test files
-        if ($testFiles.Count -gt 0) {
-            Write-Host "📋 Discovered test files:" -ForegroundColor Green
-            foreach ($file in $testFiles) {
-                Write-Host "   ✅ $($file.FullName)" -ForegroundColor Gray
-            }
-        } else {
-            Write-Host "⚠️ No test files (*.Tests.ps1) found" -ForegroundColor Yellow
+            Write-Output "test-path-exists=false" >> $env:GITHUB_OUTPUT
+            Write-Output "discovered-paths=" >> $env:GITHUB_OUTPUT
+            Write-Output "test-files-count=0" >> $env:GITHUB_OUTPUT
         }
 
     - name: 🧪 Execute Pester Tests

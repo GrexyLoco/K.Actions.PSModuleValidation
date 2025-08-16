@@ -201,7 +201,7 @@ runs:
             }
             
             if ($allTestFiles.Count -gt 0) {
-                Write-Host "� Found $($allTestFiles.Count) test files via optimized search" -ForegroundColor Cyan
+                Write-Host "✅ Found $($allTestFiles.Count) test files via optimized search" -ForegroundColor Cyan
                 
                 # Extract unique parent directories
                 $uniqueDirs = $allTestFiles | ForEach-Object { $_.Directory.FullName } | Sort-Object -Unique
@@ -210,7 +210,7 @@ runs:
                 
                 # Report discovered directories for transparency
                 foreach ($dir in $uniqueDirs) {
-                    Write-Host "� Test files found in: $dir" -ForegroundColor Cyan
+                    Write-Host "📁 Test files found in: $dir" -ForegroundColor Cyan
                 }
             } else {
                 Write-Host "📂 No *.Tests.ps1 files found in repository (searched up to 5 levels deep)" -ForegroundColor Yellow
@@ -288,11 +288,26 @@ runs:
         Write-Host "   📄 Output path: $outputPath" -ForegroundColor Gray
         Write-Host "   📊 Test files found: $testFilesCount" -ForegroundColor Gray
         
-        # Configure Pester
+        # Configure Pester with robust error handling
         $pesterConfig = if ('${{ inputs.pester-configuration }}') {
-            '${{ inputs.pester-configuration }}' | ConvertFrom-Json
+            try {
+                '${{ inputs.pester-configuration }}' | ConvertFrom-Json
+            } catch {
+                Write-Host "⚠️ Invalid Pester configuration JSON, using defaults" -ForegroundColor Yellow
+                $null
+            }
         } else {
-            @{
+            $null
+        }
+        
+        # Use default configuration if custom config failed or not provided
+        if (-not $pesterConfig) {
+            # Find PowerShell files for code coverage
+            $psFiles = Get-ChildItem -Path "." -Include "*.ps1", "*.psm1" -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+                $_.FullName -notlike "*Tests*" -and $_.FullName -notlike "*.Tests.*"
+            }
+            
+            $pesterConfig = @{
                 Run = @{
                     Path = $testPaths
                     PassThru = $true
@@ -306,10 +321,16 @@ runs:
                     OutputFormat = 'NUnitXml'
                 }
                 CodeCoverage = @{
-                    Enabled = $true
+                    Enabled = ($psFiles.Count -gt 0)
                     OutputFormat = 'JaCoCo'
-                    Path = @('*.ps1', '*.psm1')
+                    Path = if ($psFiles.Count -gt 0) { $psFiles.FullName } else { @() }
                 }
+            }
+            
+            if ($psFiles.Count -eq 0) {
+                Write-Host "⚠️ No PowerShell source files found for code coverage" -ForegroundColor Yellow
+            } else {
+                Write-Host "📊 Code coverage enabled for $($psFiles.Count) PowerShell files" -ForegroundColor Green
             }
         }
         
@@ -340,20 +361,27 @@ runs:
             
         } catch {
             Write-Host "❌ Error running tests: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "🔍 Error details: $($_.Exception.GetType().Name)" -ForegroundColor Yellow
             
-            # Set failure outputs
+            # Set failure outputs - tests were found but failed to execute
             $totalTests = 0
             $passedTests = 0
-            $failedTests = 1
+            $failedTests = 1  # Mark as failed due to execution error
             $skippedTests = 0
             $testSuccess = $false
             $duration = 0
             $coveragePercent = 0
+            
+            # has-pester-tests should be true since we found tests but they failed to run
+            $hasPesterTests = $true
         }
         
-        # Set outputs
+        # Determine if tests were actually found and attempted
+        $hasPesterTests = if ($testFilesCount -gt 0) { $true } else { $false }
+        
+        # Set outputs with correct values
         Write-Output "test-success=$testSuccess" >> $env:GITHUB_OUTPUT
-        Write-Output "has-pester-tests=true" >> $env:GITHUB_OUTPUT
+        Write-Output "has-pester-tests=$hasPesterTests" >> $env:GITHUB_OUTPUT
         Write-Output "total-tests=$totalTests" >> $env:GITHUB_OUTPUT  
         Write-Output "passed-tests=$passedTests" >> $env:GITHUB_OUTPUT
         Write-Output "failed-tests=$failedTests" >> $env:GITHUB_OUTPUT
@@ -417,8 +445,8 @@ runs:
         - ✅ **No Error**: Missing tests are treated as warning only
         - 🔍 **Auto-Discovery**: Searched up to 5 levels deep for test files
         - 📋 **Common Patterns**: Tests, Test, UnitTests, Pester, specs
-        - � **Output**: \`has-pester-tests=false\` indicates no tests were found
-        - �💡 **Recommendation**: Add Pester tests in a 'Tests' directory
+        - 📤 **Output**: \`has-pester-tests=false\` indicates no tests were found
+        - 💡 **Recommendation**: Add Pester tests in a 'Tests' directory
         
         ---
         **Note:** This action only fails when tests exist but don't pass. No tests = Warning only! ⚠️

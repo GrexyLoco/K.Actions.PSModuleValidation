@@ -15,22 +15,21 @@ on:
         description: 'Whether validation completed successfully'
         value: ${{ jobs.action-test.outputs.validation-success }}
 
-env:
-  ACTION_PATH: './'
-  TEST_MODULE_PATH: './test-module'
-  ACTIONS_CHECKOUT_VERSION: 'v4'
-
 jobs:
   action-test:
     name: 🎯 Test Action Functionality
     runs-on: ubuntu-latest
+    env:
+      ACTION_PATH: './'
+      TEST_MODULE_PATH: './test-module'
+      ACTIONS_CHECKOUT_VERSION: 'v4'
     outputs:
       test-success: ${{ steps.test-action.outputs.test-success }}
       validation-success: ${{ steps.test-action.outputs.validation-success }}
     
     steps:
       - name: 📥 Checkout Repository
-        uses: actions/checkout@${{ env.ACTIONS_CHECKOUT_VERSION }}
+        uses: actions/checkout@v4
 
       - name: 🔧 Setup Test Module Structure
         shell: pwsh

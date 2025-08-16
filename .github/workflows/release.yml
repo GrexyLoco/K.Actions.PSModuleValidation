@@ -46,54 +46,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🔍 Determine Next Version
+      - name: ⬆️ Analyze next version
         id: version
-        shell: pwsh
-        run: |
-          Write-Host "🔍 Determining next version..." -ForegroundColor Cyan
-          
-          # Get latest tag
-          $latestTag = git describe --tags --abbrev=0 2>$null
-          if (-not $latestTag) {
-              $latestTag = "v0.0.0"
-          }
-          
-          Write-Host "Latest tag: $latestTag" -ForegroundColor Yellow
-          
-          # Parse version
-          if ($latestTag -match '^v?(\d+)\.(\d+)\.(\d+)') {
-              $major = [int]$matches[1]
-              $minor = [int]$matches[2]
-              $patch = [int]$matches[3]
-          } else {
-              $major = 1
-              $minor = 0
-              $patch = 0
-          }
-          
-          # Determine release type
-          $releaseType = '${{ github.event.inputs.release-type }}' -or 'patch'
-          
-          # Calculate next version
-          switch ($releaseType) {
-              'major' { 
-                  $major++
-                  $minor = 0
-                  $patch = 0
-              }
-              'minor' { 
-                  $minor++
-                  $patch = 0
-              }
-              default { 
-                  $patch++
-              }
-          }
-          
-          $nextVersion = "v$major.$minor.$patch"
-          Write-Host "Next version: $nextVersion" -ForegroundColor Green
-          
-          Write-Output "version=$nextVersion" >> $env:GITHUB_OUTPUT
+        uses: GrexyLoco/K.Actions.NextVersion@latest
+        with:
+          branchName: ${{ github.ref_name }}
 
       - name: 📝 Generate Changelog
         id: changelog
@@ -160,15 +117,15 @@ jobs:
           git push origin $version
 
       - name: 📦 Create GitHub Release
-        uses: actions/create-release@v1
+        shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          release_name: 🚀 K.Actions.PSModuleValidation ${{ steps.version.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
-          draft: false
-          prerelease: false
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          $changelog = '${{ steps.changelog.outputs.changelog }}'
+          
+          # Create release using GitHub CLI
+          gh release create $version --title "🚀 K.Actions.PSModuleValidation $version" --notes "$changelog"
 
       - name: 📋 Generate Release Summary
         if: always()

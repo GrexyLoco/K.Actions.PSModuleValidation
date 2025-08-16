@@ -144,7 +144,14 @@ runs:
     - name: 🔍 Smart Test Discovery
       id: discover
       shell: pwsh
-      run: pwsh ./SmartTestDiscovery.ps1 -TestPath '${{ inputs.test-path }}'
+      run: |
+        Write-Host "🔍 Loading K.PSGallery.PesterTestDiscovery module..." -ForegroundColor Cyan
+        Import-Module ./K.PSGallery.PesterTestDiscovery/K.PSGallery.PesterTestDiscovery.psd1 -Force
+        
+        Write-Host "🔍 Starting intelligent test discovery..." -ForegroundColor Cyan
+        $result = Invoke-TestDiscovery -TestPath '${{ inputs.test-path }}' -ExcludePaths '${{ inputs.test-exclude-paths }}'.Split(';', [StringSplitOptions]::RemoveEmptyEntries) -OutputFormat 'GitHubActions' -Detailed
+        
+        Write-Host "🔍 Discovery complete - Found $($result.TestFilesCount) test files" -ForegroundColor Green
 
     - name: 🧪 Execute Pester Tests
       id: tests
@@ -309,14 +316,38 @@ runs:
               exit 1
           }
 
-    - name: � Smart Test Discovery
-      id: discover
+    - name: 📊 Test Results Summary
+      if: always()
       shell: pwsh
       run: |
-        pwsh ./SmartTestDiscovery.ps1 -TestPath '${{ inputs.test-path }}'
+        # Get test results from previous step
+        $success = '${{ steps.tests.outputs.test-success }}'
+        $totalTests = '${{ steps.tests.outputs.total-tests }}'
+        $passedTests = '${{ steps.tests.outputs.passed-tests }}'
+        $failedTests = '${{ steps.tests.outputs.failed-tests }}'
+        $skippedTests = '${{ steps.tests.outputs.skipped-tests }}'
+        $duration = '${{ steps.tests.outputs.test-duration }}'
+        $coverage = '${{ steps.tests.outputs.coverage-percentage }}'
+        $hasPesterTests = '${{ steps.tests.outputs.has-pester-tests }}'
+        $testFilesCount = '${{ steps.discover.outputs.test-files-count }}'
+        $discoveredPaths = '${{ steps.discover.outputs.discovered-paths }}'
+        
+        if ($hasPesterTests -eq 'false') {
+            # No tests were found
+            $summary = @"
+        ## 🧪 Test Results - ${{ inputs.module-name }} ⚠️
+        
+        ### No Tests Found
+        **Status:** ⚠️ **NO TESTS DETECTED**
+        **Strategy:** $(if ('${{ inputs.test-path }}') { 'Specified path' } else { 'Auto-discovery' })
+        **Test directories discovered:** $($discoveredPaths -replace ';', ', ')
+        
+        ### Discovery Details
+        - 🔍 **Discovery Mode**: $(if ('${{ inputs.test-path }}') { 'Explicit path: `${{ inputs.test-path }}`' } else { 'Auto-discovery (recursive search)' })
+        - 📁 **Expected Structure**: Folders named 'Test' or 'Tests' containing '*.Test.ps1' or '*.Tests.ps1' files
         - 📤 **Output**: \`has-pester-tests=false\` indicates no tests were found
         - 💡 **Recommendation**: Add Pester tests in a 'Tests' directory
-          
+        
         ---
         **Note:** This action only fails when tests exist but don't pass. No tests = Warning only! ⚠️
         "@
@@ -325,16 +356,16 @@ runs:
             $statusIcon = if ($success -eq 'true') { '✅' } else { '❌' }
             $statusText = if ($success -eq 'true') { 'PASSED' } else { 'FAILED' }
             $coverageIcon = if ([double]$coverage -ge 80) { '🟢' } else { if ([double]$coverage -ge 60) { '🟡' } else { '🔴' } }
-              
+            
             $summary = @"
         ## 🧪 Test Results - ${{ inputs.module-name }} $statusIcon
-          
+        
         ### Overview
         **Status:** $statusIcon **$statusText**
         **Duration:** $([math]::Round([double]$duration, 2)) seconds
         **Coverage:** $coverageIcon **$coverage%**
         **Test files:** $testFilesCount
-          
+        
         ### Test Metrics
         | Metric | Count | Percentage |
         |--------|-------|------------|
@@ -342,20 +373,20 @@ runs:
         | ❌ Failed | $failedTests | $([math]::Round(([double]$failedTests / [double]$totalTests) * 100, 1))% |
         | ⏭️ Skipped | $skippedTests | $([math]::Round(([double]$skippedTests / [double]$totalTests) * 100, 1))% |
         | 📊 **Total** | **$totalTests** | **100%** |
-          
+        
         ### Test Discovery
         **Strategy:** $(if ('${{ inputs.test-path }}') { 'Specified path' } else { 'Auto-discovery' })
         **Paths used:** $($discoveredPaths -replace ';', ', ')
-          
+        
         ### Quality Gates
         - 🧪 **Test Success:** $statusIcon $(if ($success -eq 'true') { 'All tests passed' } else { "$failedTests test(s) failed" })
         - 📈 **Code Coverage:** $coverageIcon $coverage% $(if ([double]$coverage -ge 80) { '(Excellent)' } elseif ([double]$coverage -ge 60) { '(Good)' } else { '(Needs Improvement)' })
         - ⚡ **Performance:** $([math]::Round([double]$duration, 2))s $(if ([double]$duration -le 30) { '(Fast)' } elseif ([double]$duration -le 120) { '(Moderate)' } else { '(Slow)' })
-          
+        
         ---
         "@
         }
-          
+        
         Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
     - name: 📄 Upload Test Artifacts

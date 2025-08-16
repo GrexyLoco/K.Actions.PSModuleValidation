@@ -145,60 +145,86 @@ runs:
       id: discover
       shell: pwsh
       run: |
-        Write-Host "🔍 Starting built-in test discovery..." -ForegroundColor Cyan
+        Write-Host "🔍 Attempting to load enhanced test discovery..." -ForegroundColor Cyan
         
-        # Built-in test discovery logic (removing dependency on external module)
-        $testPath = '${{ inputs.test-path }}'
-        $excludePaths = '${{ inputs.test-exclude-paths }}'.Split(';', [StringSplitOptions]::RemoveEmptyEntries)
+        # Try to use PowerShell Gallery module for enhanced discovery
+        $useEnhancedDiscovery = $false
+        try {
+            Install-Module K.PSGallery.PesterTestDiscovery -Force -Scope CurrentUser -ErrorAction Stop
+            Import-Module K.PSGallery.PesterTestDiscovery -Force
+            Write-Host "✅ Enhanced test discovery loaded successfully" -ForegroundColor Green
+            $useEnhancedDiscovery = $true
+        } catch {
+            Write-Host "⚠️ Enhanced discovery unavailable, using built-in discovery" -ForegroundColor Yellow
+            Write-Host "📋 Reason: $($_.Exception.Message)" -ForegroundColor Gray
+        }
         
-        # Determine search paths
-        $searchPaths = if ($testPath -and $testPath.Trim() -ne '') {
-            @($testPath)
-        } else {
-            # Auto-discovery: Look for Test/Tests directories
-            $testDirs = Get-ChildItem -Path "." -Directory -Recurse -ErrorAction SilentlyContinue | 
-                Where-Object { $_.Name -match '^Tests?$' -and $excludePaths -notcontains $_.Name }
+        if ($useEnhancedDiscovery) {
+            # Use the enhanced K.PSGallery.PesterTestDiscovery module
+            Write-Host "🚀 Using enhanced test discovery with GitHub Actions integration..." -ForegroundColor Cyan
+            $result = Invoke-TestDiscovery -TestPath '${{ inputs.test-path }}' -ExcludePaths '${{ inputs.test-exclude-paths }}'.Split(';', [StringSplitOptions]::RemoveEmptyEntries) -OutputFormat 'GitHubActions' -Detailed
             
-            if ($testDirs) {
-                $testDirs.FullName
+            Write-Host "📊 Enhanced discovery results:" -ForegroundColor Green
+            Write-Host "   📁 Test files: $($result.TestFilesCount)" -ForegroundColor Gray
+            Write-Host "   📂 Directories: $($result.TestDirectories.Count)" -ForegroundColor Gray
+            Write-Host "   🎯 Patterns: $($result.PatternsUsed -join ', ')" -ForegroundColor Gray
+        } else {
+            # Fallback to built-in discovery logic
+            Write-Host "🔍 Using built-in test discovery..." -ForegroundColor Cyan
+            
+            # Built-in test discovery logic
+            $testPath = '${{ inputs.test-path }}'
+            $excludePaths = '${{ inputs.test-exclude-paths }}'.Split(';', [StringSplitOptions]::RemoveEmptyEntries)
+            
+            # Determine search paths
+            $searchPaths = if ($testPath -and $testPath.Trim() -ne '') {
+                @($testPath)
             } else {
-                @('.')  # Fallback to current directory
-            }
-        }
-        
-        # Find test files
-        $testFiles = @()
-        foreach ($path in $searchPaths) {
-            if (Test-Path $path) {
-                $files = Get-ChildItem -Path $path -Filter "*.Tests.ps1" -Recurse -ErrorAction SilentlyContinue
-                $files += Get-ChildItem -Path $path -Filter "*.Test.ps1" -Recurse -ErrorAction SilentlyContinue
-                $testFiles += $files
-            }
-        }
-        
-        # Filter out excluded paths
-        $testFiles = $testFiles | Where-Object {
-            $filePath = $_.FullName
-            $shouldExclude = $false
-            foreach ($exclude in $excludePaths) {
-                if ($filePath -like "*$exclude*") {
-                    $shouldExclude = $true
-                    break
+                # Auto-discovery: Look for Test/Tests directories
+                $testDirs = Get-ChildItem -Path "." -Directory -Recurse -ErrorAction SilentlyContinue | 
+                    Where-Object { $_.Name -match '^Tests?$' -and $excludePaths -notcontains $_.Name }
+                
+                if ($testDirs) {
+                    $testDirs.FullName
+                } else {
+                    @('.')  # Fallback to current directory
                 }
             }
-            -not $shouldExclude
-        }
-        
-        $testFilesCount = $testFiles.Count
-        $discoveredPaths = ($testFiles | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique) -join ';'
-        
-        # Set GitHub Actions outputs
-        Write-Output "test-files-count=$testFilesCount" >> $env:GITHUB_OUTPUT
-        Write-Output "discovered-paths=$discoveredPaths" >> $env:GITHUB_OUTPUT
-        
-        Write-Host "🔍 Discovery complete - Found $testFilesCount test files" -ForegroundColor Green
-        if ($testFilesCount -gt 0) {
-            Write-Host "📁 Test directories: $($discoveredPaths -replace ';', ', ')" -ForegroundColor Gray
+            
+            # Find test files
+            $testFiles = @()
+            foreach ($path in $searchPaths) {
+                if (Test-Path $path) {
+                    $files = Get-ChildItem -Path $path -Filter "*.Tests.ps1" -Recurse -ErrorAction SilentlyContinue
+                    $files += Get-ChildItem -Path $path -Filter "*.Test.ps1" -Recurse -ErrorAction SilentlyContinue
+                    $testFiles += $files
+                }
+            }
+            
+            # Filter out excluded paths
+            $testFiles = $testFiles | Where-Object {
+                $filePath = $_.FullName
+                $shouldExclude = $false
+                foreach ($exclude in $excludePaths) {
+                    if ($filePath -like "*$exclude*") {
+                        $shouldExclude = $true
+                        break
+                    }
+                }
+                -not $shouldExclude
+            }
+            
+            $testFilesCount = $testFiles.Count
+            $discoveredPaths = ($testFiles | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique) -join ';'
+            
+            # Set GitHub Actions outputs for built-in discovery
+            Write-Output "test-files-count=$testFilesCount" >> $env:GITHUB_OUTPUT
+            Write-Output "discovered-paths=$discoveredPaths" >> $env:GITHUB_OUTPUT
+            
+            Write-Host "🔍 Built-in discovery complete - Found $testFilesCount test files" -ForegroundColor Green
+            if ($testFilesCount -gt 0) {
+                Write-Host "📁 Test directories: $($discoveredPaths -replace ';', ', ')" -ForegroundColor Gray
+            }
         }
 
     - name: 🧪 Execute Pester Tests

@@ -145,7 +145,7 @@ jobs:
 - **Error Only When**: Tests exist but fail to pass.
 
 #### Example Test Discovery Convention
-```
+```text
 YourModule/
 ├── Tests/
 │   ├── MyFeature.Tests.ps1
@@ -171,7 +171,7 @@ YourModule/
 
 Your PowerShell module should follow this structure:
 
-```
+```text
 YourModule/
 ├── YourModule.psd1          # Module manifest
 ├── YourModule.psm1          # Module file

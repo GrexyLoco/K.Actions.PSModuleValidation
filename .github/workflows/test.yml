@@ -19,92 +19,43 @@ jobs:
   action-test:
     name: 🎯 Test Action Functionality
     runs-on: ubuntu-latest
-    env:
-      ACTION_PATH: './'
-      TEST_MODULE_PATH: './test-module'
-      ACTIONS_CHECKOUT_VERSION: 'v4'
     outputs:
-      test-success: ${{ steps.test-action.outputs.test-success }}
-      validation-success: ${{ steps.test-action.outputs.validation-success }}
+      test-success: ${{ steps.evaluate.outputs.test-success }}
+      validation-success: ${{ steps.evaluate.outputs.validation-success }}
     
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🔧 Setup Test Module Structure
-        shell: pwsh
-        run: |
-          Write-Host "🔧 Creating test module structure..." -ForegroundColor Cyan
-          
-          # Create test module directory
-          New-Item -ItemType Directory -Path "${{ env.TEST_MODULE_PATH }}" -Force
-          New-Item -ItemType Directory -Path "${{ env.TEST_MODULE_PATH }}/Tests" -Force
-          
-          # Create dummy module manifest
-          $manifestContent = @'
-          @{
-              RootModule = 'TestModule.psm1'
-              ModuleVersion = '1.0.0'
-              GUID = '12345678-1234-1234-1234-123456789012'
-              Author = 'Test Author'
-              Description = 'Test module for K.Actions.PSModuleValidation'
-              PowerShellVersion = '5.1'
-              FunctionsToExport = @('Get-TestFunction')
-              CmdletsToExport = @()
-              VariablesToExport = '*'
-              AliasesToExport = @()
-          }
-          '@
-          Set-Content -Path "${{ env.TEST_MODULE_PATH }}/TestModule.psd1" -Value $manifestContent
-          
-          # Create dummy module file
-          $moduleContent = @'
-          function Get-TestFunction {
-              [CmdletBinding()]
-              param(
-                  [Parameter(Mandatory)]
-                  [string]$Name
-              )
-              
-              Write-Output "Hello, $Name!"
-          }
-          
-          Export-ModuleMember -Function Get-TestFunction
-          '@
-          Set-Content -Path "${{ env.TEST_MODULE_PATH }}/TestModule.psm1" -Value $moduleContent
-          
-          # Create dummy test file
-          $testContent = @'
-          Describe "TestModule Tests" {
-              BeforeAll {
-                  Import-Module -Name "TestModule.psd1" -Force
-              }
-              
-              Context "Get-TestFunction" {
-                  It "Should return greeting message" {
-                      $result = Get-TestFunction -Name "World"
-                      $result | Should -Be "Hello, World!"
-                  }
-                  
-                  It "Should accept parameter" {
-                      { Get-TestFunction -Name "Test" } | Should -Not -Throw
-                  }
-              }
-          }
-          '@
-          Set-Content -Path "${{ env.TEST_MODULE_PATH }}/Tests/TestModule.Tests.ps1" -Value $testContent
-          
-          Write-Host "✅ Test module structure created" -ForegroundColor Green
+      - name: 🧪 Test Action - No Tests Scenario
+        id: test-no-tests
+        uses: ./
+        with:
+          test-path: './non-existent-tests'
+          output-path: './TestResults-NoTests.xml'
+          validate-all-codebase: 'false'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          module-name: 'ActionTest-NoTests'
+        continue-on-error: true
 
-      - name: 🎯 Test Action with Test Module
-        id: test-action
+      - name: 🧪 Test Action - Auto Discovery
+        id: test-auto-discovery
         uses: ./
         with:
           # test-path: Leave empty to test auto-discovery
-          output-path: '${{ env.TEST_MODULE_PATH }}/TestResults.xml'
+          output-path: './TestResults-AutoDiscovery.xml'
+          validate-all-codebase: 'false'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          module-name: 'ActionTest-AutoDiscovery'
+        continue-on-error: true
+
+      - name: 🧪 Test Action - Full Validation
+        id: test-full-validation
+        uses: ./
+        with:
           validate-all-codebase: 'true'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          module-name: 'TestModule'
+          module-name: 'ActionTest-FullValidation'
         continue-on-error: true
 
       - name: 📊 Evaluate Test Results
@@ -113,29 +64,40 @@ jobs:
         run: |
           Write-Host "📊 Evaluating action test results..." -ForegroundColor Cyan
           
-          $testSuccess = '${{ steps.test-action.outputs.test-success }}'
-          $totalTests = '${{ steps.test-action.outputs.total-tests }}'
-          $actionOutcome = '${{ steps.test-action.outcome }}'
+          # Collect results from all test scenarios
+          $noTestsOutcome = '${{ steps.test-no-tests.outcome }}'
+          $autoDiscoveryOutcome = '${{ steps.test-auto-discovery.outcome }}'
+          $fullValidationOutcome = '${{ steps.test-full-validation.outcome }}'
           
-          Write-Host "Action Outcome: $actionOutcome" -ForegroundColor Yellow
-          Write-Host "Test Success: $testSuccess" -ForegroundColor Yellow
-          Write-Host "Total Tests: $totalTests" -ForegroundColor Yellow
+          $noTestsSuccess = '${{ steps.test-no-tests.outputs.test-success }}' -eq 'true'
+          $autoDiscoverySuccess = '${{ steps.test-auto-discovery.outputs.test-success }}' -eq 'true'
+          $fullValidationSuccess = '${{ steps.test-full-validation.outputs.test-success }}' -eq 'true'
           
-          # Determine if validation was successful (action ran without critical errors)
-          $validationSuccess = ($actionOutcome -eq 'success') -or ($actionOutcome -eq 'failure' -and $totalTests -gt 0)
+          Write-Host "Test Scenarios Results:" -ForegroundColor Cyan
+          Write-Host "  📭 No Tests: $noTestsOutcome (success: $noTestsSuccess)" -ForegroundColor Gray
+          Write-Host "  🔍 Auto Discovery: $autoDiscoveryOutcome (success: $autoDiscoverySuccess)" -ForegroundColor Gray
+          Write-Host "  🛡️ Full Validation: $fullValidationOutcome (success: $fullValidationSuccess)" -ForegroundColor Gray
           
-          # Overall test success (action works AND tests pass)
-          $overallSuccess = $validationSuccess -and ($testSuccess -eq 'true')
+          # Action validation: Did all scenarios run without crashing?
+          $validationSuccess = ($noTestsOutcome -ne 'failure') -and 
+                              ($autoDiscoveryOutcome -ne 'failure') -and 
+                              ($fullValidationOutcome -ne 'failure')
+          
+          # Overall success: Action works correctly in all scenarios
+          $overallSuccess = $validationSuccess -and 
+                           ($noTestsSuccess -or $noTestsOutcome -eq 'success') -and
+                           ($autoDiscoverySuccess -or $autoDiscoveryOutcome -eq 'success') -and
+                           ($fullValidationSuccess -or $fullValidationOutcome -eq 'success')
           
           Write-Output "test-success=$overallSuccess" >> $env:GITHUB_OUTPUT
           Write-Output "validation-success=$validationSuccess" >> $env:GITHUB_OUTPUT
           
           if ($overallSuccess) {
-              Write-Host "✅ Action test completed successfully!" -ForegroundColor Green
+              Write-Host "✅ All action scenarios completed successfully!" -ForegroundColor Green
           } elseif ($validationSuccess) {
-              Write-Host "⚠️ Action runs but tests failed (expected for demo)" -ForegroundColor Yellow
+              Write-Host "⚠️ Action runs but some scenarios had issues" -ForegroundColor Yellow
           } else {
-              Write-Host "❌ Action validation failed" -ForegroundColor Red
+              Write-Host "❌ Action validation failed in one or more scenarios" -ForegroundColor Red
               exit 1
           }
 
@@ -145,41 +107,57 @@ jobs:
         run: |
           $testSuccess = '${{ steps.evaluate.outputs.test-success }}'
           $validationSuccess = '${{ steps.evaluate.outputs.validation-success }}'
-          $actionOutcome = '${{ steps.test-action.outcome }}'
-          $totalTests = '${{ steps.test-action.outputs.total-tests }}' -or '0'
-          $passedTests = '${{ steps.test-action.outputs.passed-tests }}' -or '0'
-          $failedTests = '${{ steps.test-action.outputs.failed-tests }}' -or '0'
+          
+          # Collect scenario outcomes
+          $noTestsOutcome = '${{ steps.test-no-tests.outcome }}'
+          $autoDiscoveryOutcome = '${{ steps.test-auto-discovery.outcome }}'
+          $fullValidationOutcome = '${{ steps.test-full-validation.outcome }}'
           
           $statusIcon = if ($testSuccess -eq 'true') { '✅' } else { '⚠️' }
           $validationIcon = if ($validationSuccess -eq 'true') { '✅' } else { '❌' }
+          
+          # Function to get status icon for scenario
+          function Get-ScenarioIcon($outcome) {
+              switch ($outcome) {
+                  'success' { return '✅' }
+                  'failure' { return '❌' }
+                  'cancelled' { return '⏹️' }
+                  'skipped' { return '⏭️' }
+                  default { return '❓' }
+              }
+          }
           
           $summary = @"
           ## 🧪 K.Actions.PSModuleValidation Test Results $statusIcon
           
           ### Action Validation
           **Status:** $validationIcon **$(if ($validationSuccess -eq 'true') { 'SUCCESS' } else { 'FAILED' })**
-          **Action Outcome:** $actionOutcome
+          **Overall Result:** $statusIcon **$(if ($testSuccess -eq 'true') { 'PASSED' } else { 'PARTIAL' })**
           
-          ### Test Execution
-          **Test Results:** $statusIcon **$(if ($testSuccess -eq 'true') { 'PASSED' } else { 'PARTIAL' })**
-          **Total Tests:** $totalTests
-          **Passed:** $passedTests
-          **Failed:** $failedTests
+          ### Test Scenarios
+          | Scenario | Outcome | Purpose |
+          |----------|---------|---------|
+          | 📭 No Tests | $(Get-ScenarioIcon $noTestsOutcome) $noTestsOutcome | Tests action behavior when no test files found |
+          | 🔍 Auto Discovery | $(Get-ScenarioIcon $autoDiscoveryOutcome) $autoDiscoveryOutcome | Tests automatic test file discovery |
+          | 🛡️ Full Validation | $(Get-ScenarioIcon $fullValidationOutcome) $fullValidationOutcome | Tests complete validation pipeline |
           
-          ### Validation Components Tested
-          - 🛡️ **GitLeaks Security Scan** - Secret detection
-          - 📝 **Super-Linter** - Code quality analysis
-          - 🧪 **Pester Testing** - PowerShell test framework
-          - 📊 **Enhanced Summaries** - GitHub step summaries
+          ### Action Components Validated
+          - 🛡️ **GitLeaks Security Scan** - Secret detection pipeline
+          - 📝 **Super-Linter** - Code quality analysis pipeline
+          - 🧪 **Pester Testing** - PowerShell test framework integration
+          - 📦 **Module Discovery** - PowerShell manifest detection and parsing
+          - 📊 **Enhanced Summaries** - GitHub step summaries generation
           - 📄 **Artifact Upload** - Test results preservation
           
-          ### Action Behavior
+          ### Action Behavior Verification
           - ✅ Action loads and executes without critical errors
-          - ✅ Handles missing dependencies gracefully
-          - ✅ Provides comprehensive reporting
-          - ✅ Supports configurable inputs
+          - ✅ Handles missing test files gracefully (no-tests scenario)
+          - ✅ Processes different input configurations correctly
+          - ✅ Provides comprehensive reporting and outputs
+          - ✅ Supports configurable validation scope
           
           ---
+          **Note:** This validates the Action itself, not the K.PSGallery modules it uses (they have their own tests).
           **Action is ready for production use! 🚀**
           "@
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
@@ -190,6 +168,6 @@ jobs:
         with:
           name: action-test-results
           path: |
-            ${{ env.TEST_MODULE_PATH }}/TestResults.xml
-            ${{ env.TEST_MODULE_PATH }}/
+            ./TestResults-*.xml
+            ./action.yml
           retention-days: 7

@@ -31,7 +31,7 @@ jobs:
         id: test-no-tests
         uses: ./
         with:
-          test-path: './non-existent-tests'
+          test-path: './.github'  # Directory exists but contains no test files
           output-path: './TestResults-NoTests.xml'
           validate-all-codebase: 'false'
           github-token: ${{ secrets.GITHUB_TOKEN }}

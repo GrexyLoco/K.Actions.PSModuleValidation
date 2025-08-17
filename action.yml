@@ -204,9 +204,10 @@ runs:
             $testFiles = @()
             foreach ($path in $searchPaths) {
                 if (Test-Path $path) {
-                    $files = Get-ChildItem -Path $path -Filter "*.Tests.ps1" -Recurse -ErrorAction SilentlyContinue
-                    $files += Get-ChildItem -Path $path -Filter "*.Test.ps1" -Recurse -ErrorAction SilentlyContinue
-                    $testFiles += $files
+                    $foundFiles = @()
+                    $foundFiles += Get-ChildItem -Path $path -Filter "*.Tests.ps1" -Recurse -ErrorAction SilentlyContinue
+                    $foundFiles += Get-ChildItem -Path $path -Filter "*.Test.ps1" -Recurse -ErrorAction SilentlyContinue
+                    $testFiles += $foundFiles
                 }
             }
             

@@ -59,6 +59,15 @@ outputs:
   coverage-percentage:
     description: 'Code coverage percentage'
     value: ${{ steps.tests.outputs.coverage-percentage }}
+  module-manifest-path:
+    description: 'Path to discovered PowerShell module manifest file'
+    value: ${{ steps.manifest-discovery.outputs.manifest-path }}
+  module-version:
+    description: 'Version detected from PowerShell module manifest'
+    value: ${{ steps.manifest-discovery.outputs.module-version }}
+  module-analysis:
+    description: 'Analysis results of PowerShell module structure'
+    value: ${{ steps.manifest-discovery.outputs.analysis-summary }}
 
 runs:
   using: 'composite'
@@ -224,6 +233,112 @@ runs:
             Write-Host "🔍 Built-in discovery complete - Found $testFilesCount test files" -ForegroundColor Green
             if ($testFilesCount -gt 0) {
                 Write-Host "📁 Test directories: $($discoveredPaths -replace ';', ', ')" -ForegroundColor Gray
+            }
+        }
+
+    - name: 📦 PowerShell Module Discovery
+      id: manifest-discovery
+      shell: pwsh
+      run: |
+        Write-Host "📦 Discovering PowerShell module structure..." -ForegroundColor Cyan
+        
+        # Find PowerShell module manifests (.psd1 files)
+        $manifestFiles = Get-ChildItem -Path "." -Filter "*.psd1" -Recurse -ErrorAction SilentlyContinue | 
+            Where-Object { $_.Name -notlike "*test*" -and $_.Directory.Name -notlike "*test*" }
+        
+        $manifestCount = $manifestFiles.Count
+        Write-Host "🔍 Found $manifestCount PowerShell module manifest(s)" -ForegroundColor $(if ($manifestCount -gt 0) { 'Green' } else { 'Yellow' })
+        
+        if ($manifestCount -eq 0) {
+            # No manifests found
+            Write-Host "⚠️ No PowerShell module manifests detected" -ForegroundColor Yellow
+            Write-Host "💡 This might not be a PowerShell module project" -ForegroundColor Gray
+            
+            Write-Output "manifest-path=" >> $env:GITHUB_OUTPUT
+            Write-Output "module-version=" >> $env:GITHUB_OUTPUT  
+            Write-Output "analysis-summary=No PowerShell module manifests found" >> $env:GITHUB_OUTPUT
+        } else {
+            # Analyze the primary manifest (prefer main directory, then largest)
+            $primaryManifest = $manifestFiles | Sort-Object @{
+                Expression = { ($_.FullName -split [regex]::Escape([IO.Path]::DirectorySeparatorChar)).Count }
+            }, @{
+                Expression = { $_.Length }; Descending = $true
+            } | Select-Object -First 1
+            
+            Write-Host "🎯 Primary manifest: $($primaryManifest.Name)" -ForegroundColor Green
+            Write-Host "📁 Location: $($primaryManifest.Directory.FullName)" -ForegroundColor Gray
+            
+            try {
+                # Parse manifest content safely
+                $manifestContent = Get-Content $primaryManifest.FullName -Raw -ErrorAction Stop
+                $moduleInfo = @{}
+                
+                # Extract key information using regex (safer than Invoke-Expression)
+                if ($manifestContent -match "ModuleVersion\s*=\s*['\`"]([^'\`"]+)['\`"]") {
+                    $moduleInfo.Version = $matches[1]
+                }
+                if ($manifestContent -match "Author\s*=\s*['\`"]([^'\`"]+)['\`"]") {
+                    $moduleInfo.Author = $matches[1]
+                }
+                if ($manifestContent -match "Description\s*=\s*['\`"]([^'\`"]+)['\`"]") {
+                    $moduleInfo.Description = $matches[1]
+                }
+                if ($manifestContent -match "PowerShellVersion\s*=\s*['\`"]([^'\`"]+)['\`"]") {
+                    $moduleInfo.PowerShellVersion = $matches[1]
+                }
+                if ($manifestContent -match "RootModule\s*=\s*['\`"]([^'\`"]+)['\`"]") {
+                    $moduleInfo.RootModule = $matches[1]
+                }
+                
+                # Check if RootModule file exists
+                $hasRootModule = $false
+                if ($moduleInfo.RootModule) {
+                    $rootModulePath = Join-Path $primaryManifest.Directory.FullName $moduleInfo.RootModule
+                    $hasRootModule = Test-Path $rootModulePath
+                }
+                
+                # Generate analysis summary
+                $analysisItems = @()
+                $analysisItems += "Module: $($primaryManifest.BaseName)"
+                if ($moduleInfo.Version) { $analysisItems += "Version: $($moduleInfo.Version)" }
+                if ($moduleInfo.Author) { $analysisItems += "Author: $($moduleInfo.Author)" }
+                if ($moduleInfo.PowerShellVersion) { $analysisItems += "PS Version: $($moduleInfo.PowerShellVersion)+" }
+                if ($moduleInfo.RootModule) { 
+                    $rootStatus = if ($hasRootModule) { "✅" } else { "❌" }
+                    $analysisItems += "Root Module: $($moduleInfo.RootModule) $rootStatus"
+                }
+                
+                $analysisSummary = $analysisItems -join " | "
+                
+                # Output results
+                Write-Output "manifest-path=$($primaryManifest.FullName)" >> $env:GITHUB_OUTPUT
+                Write-Output "module-version=$($moduleInfo.Version)" >> $env:GITHUB_OUTPUT
+                Write-Output "analysis-summary=$analysisSummary" >> $env:GITHUB_OUTPUT
+                
+                # Display detailed analysis
+                Write-Host "📊 Module Analysis:" -ForegroundColor Cyan
+                Write-Host "   📦 Module Name: $($primaryManifest.BaseName)" -ForegroundColor White
+                if ($moduleInfo.Version) { Write-Host "   🏷️ Version: $($moduleInfo.Version)" -ForegroundColor White }
+                if ($moduleInfo.Author) { Write-Host "   👤 Author: $($moduleInfo.Author)" -ForegroundColor White }
+                if ($moduleInfo.Description) { Write-Host "   📝 Description: $($moduleInfo.Description.Substring(0, [Math]::Min(80, $moduleInfo.Description.Length)))$(if ($moduleInfo.Description.Length -gt 80) { '...' })" -ForegroundColor White }
+                if ($moduleInfo.PowerShellVersion) { Write-Host "   ⚡ PS Version: $($moduleInfo.PowerShellVersion)+" -ForegroundColor White }
+                if ($moduleInfo.RootModule) { 
+                    $rootStatus = if ($hasRootModule) { "✅ Found" } else { "❌ Missing" }
+                    Write-Host "   🎯 Root Module: $($moduleInfo.RootModule) ($rootStatus)" -ForegroundColor $(if ($hasRootModule) { 'Green' } else { 'Red' })
+                }
+                
+                if ($manifestCount -gt 1) {
+                    Write-Host "📋 Additional manifests found:" -ForegroundColor Yellow
+                    $manifestFiles | Where-Object { $_.FullName -ne $primaryManifest.FullName } | ForEach-Object {
+                        Write-Host "   📄 $($_.Name) in $($_.Directory.Name)" -ForegroundColor Gray
+                    }
+                }
+                
+            } catch {
+                Write-Host "❌ Error parsing manifest: $($_.Exception.Message)" -ForegroundColor Red
+                Write-Output "manifest-path=$($primaryManifest.FullName)" >> $env:GITHUB_OUTPUT
+                Write-Output "module-version=" >> $env:GITHUB_OUTPUT
+                Write-Output "analysis-summary=Error parsing manifest: $($_.Exception.Message)" >> $env:GITHUB_OUTPUT
             }
         }
 
@@ -405,9 +520,18 @@ runs:
         $hasPesterTests = '${{ steps.tests.outputs.has-pester-tests }}'
         $testFilesCount = '${{ steps.discover.outputs.test-files-count }}'
         $discoveredPaths = '${{ steps.discover.outputs.discovered-paths }}'
+        $manifestPath = '${{ steps.manifest-discovery.outputs.manifest-path }}'
+        $moduleVersion = '${{ steps.manifest-discovery.outputs.module-version }}'
+        $analysisResult = '${{ steps.manifest-discovery.outputs.analysis-summary }}'
         
         if ($hasPesterTests -eq 'false') {
             # No tests were found
+            $moduleInfo = if ($manifestPath -and $moduleVersion) {
+                "**PowerShell Module:** $($analysisResult)"
+            } else {
+                "**Project Type:** Generic (no PowerShell module manifest detected)"
+            }
+            
             $summary = @"
         ## 🧪 Test Results - ${{ inputs.module-name }} ⚠️
         
@@ -415,6 +539,9 @@ runs:
         **Status:** ⚠️ **NO TESTS DETECTED**
         **Strategy:** $(if ('${{ inputs.test-path }}') { 'Specified path' } else { 'Auto-discovery' })
         **Test directories discovered:** $($discoveredPaths -replace ';', ', ')
+        
+        ### Project Analysis
+        $moduleInfo
         
         ### Discovery Details
         - 🔍 **Discovery Mode**: $(if ('${{ inputs.test-path }}') { 'Explicit path: `${{ inputs.test-path }}`' } else { 'Auto-discovery (recursive search)' })
@@ -431,6 +558,23 @@ runs:
             $statusText = if ($success -eq 'true') { 'PASSED' } else { 'FAILED' }
             $coverageIcon = if ([double]$coverage -ge 80) { '🟢' } else { if ([double]$coverage -ge 60) { '🟡' } else { '🔴' } }
             
+            # PowerShell Module specific information
+            $moduleSection = if ($manifestPath -and $moduleVersion) {
+                @"
+        ### 📦 PowerShell Module
+        **Module Analysis:** $analysisResult
+        **Manifest:** \`$(Split-Path $manifestPath -Leaf)\`
+        **Version:** $moduleVersion
+        
+        "@
+            } else {
+                @"
+        ### 📁 Project Type
+        **Type:** Generic project (no PowerShell module manifest detected)
+        
+        "@
+            }
+            
             $summary = @"
         ## 🧪 Test Results - ${{ inputs.module-name }} $statusIcon
         
@@ -440,7 +584,7 @@ runs:
         **Coverage:** $coverageIcon **$coverage%**
         **Test files:** $testFilesCount
         
-        ### Test Metrics
+        $moduleSection### Test Metrics
         | Metric | Count | Percentage |
         |--------|-------|------------|
         | ✅ Passed | $passedTests | $([math]::Round(([double]$passedTests / [double]$totalTests) * 100, 1))% |

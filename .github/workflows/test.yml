@@ -169,9 +169,9 @@ jobs:
           foreach ($var in $requiredEnvVars) {
               $value = [Environment]::GetEnvironmentVariable($var)
               if ($value) {
-                  Write-Host "✅ $var: Available" -ForegroundColor Green
+                  Write-Host "✅ ${var}: Available" -ForegroundColor Green
               } else {
-                  Write-Host "❌ $var: Missing" -ForegroundColor Red
+                  Write-Host "❌ ${var}: Missing" -ForegroundColor Red
                   $envVarsOk = $false
               }
           }

@@ -519,50 +519,50 @@ jobs:
           echo "✅ PowerShell: $PS_CMD $PS_VER"
           
           # Run compatibility tests
-          $PS_CMD -c "
-            \$tests = @('Action YAML parsing', 'File operations', 'Environment access')
-            \$results = @()
+          $PS_CMD -c '
+            $tests = @("Action YAML parsing", "File operations", "Environment access")
+            $results = @()
             
             # Test 1: Action parsing
             try {
-              \$actionContent = Get-Content './action.yml' -Raw
-              \$actionName = (\$actionContent | Select-String -Pattern 'name:\s*[\\\"\\\']?([^\\\"\\\']*)[\\\"\\\']?' | ForEach-Object { \$_.Matches[0].Groups[1].Value }).Trim()
-              \$results += '✅ \$(\$tests[0]): \$actionName'
-              \$test1 = \$true
+              $actionContent = Get-Content "./action.yml" -Raw
+              $actionName = $actionContent -replace "(?s).*name:\s*['"'"'\""]?([^'"'"'\""]+).*", "$1"
+              $results += "✅ $($tests[0]): $actionName"
+              $test1 = $true
             } catch {
-              \$results += '❌ \$(\$tests[0]): Failed'
-              \$test1 = \$false
+              $results += "❌ $($tests[0]): Failed"
+              $test1 = $false
             }
             
             # Test 2: File operations
             try {
-              \$testFile = 'test-\$([System.Guid]::NewGuid().ToString().Substring(0,6)).tmp'
-              'test' | Out-File \$testFile -Encoding UTF8
-              \$null = Get-Content \$testFile
-              Remove-Item \$testFile -Force
-              \$results += '✅ \$(\$tests[1]): OK'
-              \$test2 = \$true
+              $testFile = "test-$([System.Guid]::NewGuid().ToString().Substring(0,6)).tmp"
+              "test" | Out-File $testFile -Encoding UTF8
+              $null = Get-Content $testFile
+              Remove-Item $testFile -Force
+              $results += "✅ $($tests[1]): OK"
+              $test2 = $true
             } catch {
-              \$results += '❌ \$(\$tests[1]): Failed'
-              \$test2 = \$false
+              $results += "❌ $($tests[1]): Failed"
+              $test2 = $false
             }
             
             # Test 3: Environment
             try {
-              \$workspace = \$env:GITHUB_WORKSPACE
-              \$runner = \$env:RUNNER_OS
-              \$results += '✅ \$(\$tests[2]): \$runner'
-              \$test3 = \$true
+              $workspace = $env:GITHUB_WORKSPACE
+              $runner = $env:RUNNER_OS
+              $results += "✅ $($tests[2]): $runner"
+              $test3 = $true
             } catch {
-              \$results += '❌ \$(\$tests[2]): Failed'
-              \$test3 = \$false
+              $results += "❌ $($tests[2]): Failed"
+              $test3 = $false
             }
             
-            \$results | ForEach-Object { Write-Host \$_ }
-            \$success = \$test1 -and \$test2 -and \$test3
-            Write-Output \"success=\$success\" >> \$env:GITHUB_OUTPUT
-            Write-Output \"ps-version=$PS_VER\" >> \$env:GITHUB_OUTPUT
-          "
+            $results | ForEach-Object { Write-Host $_ }
+            $success = $test1 -and $test2 -and $test3
+            Write-Output "success=$success" >> $env:GITHUB_OUTPUT
+            Write-Output "ps-version='$PS_VER'" >> $env:GITHUB_OUTPUT
+          '
           
           echo "ps-command=$PS_CMD" >> $GITHUB_OUTPUT
 

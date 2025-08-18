@@ -150,11 +150,11 @@ runs:
         "@
         Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
-    - name: 🔍 Smart Test Discovery
+    - name: 🔍 Smart Pester Test Discovery
       id: discover
       shell: pwsh
       run: |
-        Write-Host "🔍 Attempting to load enhanced test discovery..." -ForegroundColor Cyan
+        Write-Host "🔍 Attempting to load enhanced test discovery module..." -ForegroundColor Cyan
         
         # Try to use PowerShell Gallery module for enhanced discovery
         $useEnhancedDiscovery = $false

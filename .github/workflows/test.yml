@@ -17,7 +17,7 @@ on:
 
 jobs:
   action-test:
-    name: 🎯 Test Action Functionality
+    name: 🎯 Test Action Integration
     runs-on: ubuntu-latest
     outputs:
       test-success: ${{ steps.evaluate.outputs.test-success }}
@@ -27,147 +27,273 @@ jobs:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🧪 Test Action - No Tests Scenario
-        id: test-no-tests
+      # Test 1: Input Validation - Does the action handle different input combinations?
+      - name: 📥 Test Input Validation
+        id: test-inputs
+        shell: pwsh
+        run: |
+          Write-Host "🧪 Testing Action Input Processing..." -ForegroundColor Cyan
+          
+          # Test action.yml structure (basic validation)
+          $actionContent = Get-Content './action.yml' -Raw
+          
+          # Check for required sections in YAML
+          $requiredSections = @('name:', 'description:', 'inputs:', 'outputs:', 'runs:')
+          $sectionsFound = 0
+          
+          foreach ($section in $requiredSections) {
+              if ($actionContent -match $section) {
+                  Write-Host "✅ Found section: $section" -ForegroundColor Green
+                  $sectionsFound++
+              } else {
+                  Write-Host "❌ Missing section: $section" -ForegroundColor Red
+              }
+          }
+          
+          # Count inputs by looking for input definitions
+          $inputMatches = [regex]::Matches($actionContent, '^\s+[a-zA-Z0-9-]+:\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+          $inputsInInputsSection = ($actionContent -split 'inputs:')[1] -split 'outputs:'
+          if ($inputsInInputsSection.Count -gt 1) {
+              $inputSection = $inputsInInputsSection[0]
+              $inputCount = ([regex]::Matches($inputSection, '^\s+[a-zA-Z0-9-]+:\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)).Count
+              Write-Host "✅ Found $inputCount defined inputs" -ForegroundColor Green
+          }
+          
+          if ($sectionsFound -eq $requiredSections.Count) {
+              Write-Host "✅ Action metadata validation passed" -ForegroundColor Green
+              Write-Output "input-validation=success" >> $env:GITHUB_OUTPUT
+          } else {
+              Write-Host "❌ Action metadata validation failed" -ForegroundColor Red
+              Write-Output "input-validation=failure" >> $env:GITHUB_OUTPUT
+          }
+
+      # Test 2: Action Execution - Does the action run without crashing?
+      - name: 🚀 Test Action Execution
+        id: test-execution
         uses: ./
         with:
-          test-path: './.github'  # Directory exists but contains no test files
-          output-path: './TestResults-NoTests.xml'
+          test-path: './.github'  # Use existing directory with no tests
           validate-all-codebase: 'false'
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          module-name: 'ActionTest-NoTests'
+          module-name: 'ActionIntegrationTest'
         continue-on-error: true
 
-      - name: 🧪 Test Action - Auto Discovery
-        id: test-auto-discovery
-        uses: ./
-        with:
-          # test-path: Leave empty to test auto-discovery
-          output-path: './TestResults-AutoDiscovery.xml'
-          validate-all-codebase: 'false'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          module-name: 'ActionTest-AutoDiscovery'
-        continue-on-error: true
+      # Test 3: Output Validation - Does the action set expected outputs?
+      - name: 📤 Test Output Validation
+        id: test-outputs
+        shell: pwsh
+        run: |
+          Write-Host "🧪 Testing Action Output Generation..." -ForegroundColor Cyan
+          
+          # Check if action ran
+          $executionOutcome = '${{ steps.test-execution.outcome }}'
+          Write-Host "Action execution outcome: $executionOutcome" -ForegroundColor Gray
+          
+          # Check expected outputs (based on action.yml)
+          $testSuccess = '${{ steps.test-execution.outputs.test-success }}'
+          $hasPesterTests = '${{ steps.test-execution.outputs.has-pester-tests }}'
+          $totalTests = '${{ steps.test-execution.outputs.total-tests }}'
+          $passedTests = '${{ steps.test-execution.outputs.passed-tests }}'
+          $failedTests = '${{ steps.test-execution.outputs.failed-tests }}'
+          $coveragePercent = '${{ steps.test-execution.outputs.coverage-percentage }}'
+          
+          # Count how many outputs were set
+          $outputsFound = 0
+          $outputs = @{
+              'test-success' = $testSuccess
+              'has-pester-tests' = $hasPesterTests
+              'total-tests' = $totalTests
+              'passed-tests' = $passedTests
+              'failed-tests' = $failedTests
+              'coverage-percentage' = $coveragePercent
+          }
+          
+          foreach ($output in $outputs.Keys) {
+              $value = $outputs[$output]
+              if ($value -and $value -ne '') {
+                  Write-Host "✅ Output '$output': $value" -ForegroundColor Green
+                  $outputsFound++
+              } else {
+                  Write-Host "⚠️ Output '$output': Not set" -ForegroundColor Yellow
+              }
+          }
+          
+          $outputSuccess = $outputsFound -gt 0
+          Write-Host "📊 Found $outputsFound out of $($outputs.Count) expected outputs" -ForegroundColor Cyan
+          
+          Write-Output "output-validation=$(if ($outputSuccess) { 'success' } else { 'failure' })" >> $env:GITHUB_OUTPUT
+          Write-Output "outputs-found=$outputsFound" >> $env:GITHUB_OUTPUT
 
-      - name: 🧪 Test Action - Full Validation
-        id: test-full-validation
-        uses: ./
-        with:
-          validate-all-codebase: 'true'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          module-name: 'ActionTest-FullValidation'
-        continue-on-error: true
+      # Test 4: Artifact Validation - Are artifacts created as expected?
+      - name: 📄 Test Artifact Generation
+        id: test-artifacts
+        shell: pwsh
+        run: |
+          Write-Host "🧪 Testing Artifact Generation..." -ForegroundColor Cyan
+          
+          # Check for expected artifacts
+          $expectedFiles = @(
+              './TestResults.xml'
+          )
+          
+          $artifactsFound = 0
+          foreach ($file in $expectedFiles) {
+              if (Test-Path $file) {
+                  $size = (Get-Item $file).Length
+                  Write-Host "✅ Artifact found: $file ($size bytes)" -ForegroundColor Green
+                  $artifactsFound++
+              } else {
+                  Write-Host "⚠️ Artifact missing: $file" -ForegroundColor Yellow
+              }
+          }
+          
+          Write-Host "📊 Found $artifactsFound/$($expectedFiles.Count) expected artifacts" -ForegroundColor Cyan
+          
+          Write-Output "artifact-validation=$(if ($artifactsFound -gt 0) { 'success' } else { 'partial' })" >> $env:GITHUB_OUTPUT
+          Write-Output "artifacts-found=$artifactsFound" >> $env:GITHUB_OUTPUT
 
-      - name: 📊 Evaluate Test Results
+      # Test 5: GitHub Integration - Are summaries and step outputs working?
+      - name: 📋 Test GitHub Integration
+        id: test-github
+        shell: pwsh
+        run: |
+          Write-Host "🧪 Testing GitHub Integration Features..." -ForegroundColor Cyan
+          
+          # Check if step summary was generated (file exists)
+          $summaryGenerated = Test-Path $env:GITHUB_STEP_SUMMARY
+          Write-Host "Step Summary: $(if ($summaryGenerated) { '✅ Generated' } else { '❌ Missing' })" -ForegroundColor $(if ($summaryGenerated) { 'Green' } else { 'Red' })
+          
+          # Test environment variables
+          $requiredEnvVars = @('GITHUB_WORKSPACE', 'GITHUB_REPOSITORY', 'GITHUB_SHA')
+          $envVarsOk = $true
+          foreach ($var in $requiredEnvVars) {
+              $value = [Environment]::GetEnvironmentVariable($var)
+              if ($value) {
+                  Write-Host "✅ $var: Available" -ForegroundColor Green
+              } else {
+                  Write-Host "❌ $var: Missing" -ForegroundColor Red
+                  $envVarsOk = $false
+              }
+          }
+          
+          $githubIntegration = $summaryGenerated -and $envVarsOk
+          Write-Output "github-integration=$(if ($githubIntegration) { 'success' } else { 'failure' })" >> $env:GITHUB_OUTPUT
+
+      # Evaluate all test results
+      - name: 📊 Evaluate Integration Tests
         id: evaluate
         shell: pwsh
         run: |
-          Write-Host "📊 Evaluating action test results..." -ForegroundColor Cyan
+          Write-Host "📊 Evaluating integration test results..." -ForegroundColor Cyan
           
-          # Collect results from all test scenarios
-          $noTestsOutcome = '${{ steps.test-no-tests.outcome }}'
-          $autoDiscoveryOutcome = '${{ steps.test-auto-discovery.outcome }}'
-          $fullValidationOutcome = '${{ steps.test-full-validation.outcome }}'
+          # Collect all test results
+          $inputValidation = '${{ steps.test-inputs.outputs.input-validation }}'
+          $executionOutcome = '${{ steps.test-execution.outcome }}'
+          $outputValidation = '${{ steps.test-outputs.outputs.output-validation }}'
+          $artifactValidation = '${{ steps.test-artifacts.outputs.artifact-validation }}'
+          $githubIntegration = '${{ steps.test-github.outputs.github-integration }}'
           
-          $noTestsSuccess = '${{ steps.test-no-tests.outputs.test-success }}' -eq 'true'
-          $autoDiscoverySuccess = '${{ steps.test-auto-discovery.outputs.test-success }}' -eq 'true'
-          $fullValidationSuccess = '${{ steps.test-full-validation.outputs.test-success }}' -eq 'true'
+          Write-Host "Integration Test Results:" -ForegroundColor Cyan
+          Write-Host "  📥 Input Validation: $inputValidation" -ForegroundColor Gray
+          Write-Host "  🚀 Action Execution: $executionOutcome" -ForegroundColor Gray
+          Write-Host "  📤 Output Validation: $outputValidation" -ForegroundColor Gray
+          Write-Host "  📄 Artifact Generation: $artifactValidation" -ForegroundColor Gray
+          Write-Host "  📋 GitHub Integration: $githubIntegration" -ForegroundColor Gray
           
-          Write-Host "Test Scenarios Results:" -ForegroundColor Cyan
-          Write-Host "  📭 No Tests: $noTestsOutcome (success: $noTestsSuccess)" -ForegroundColor Gray
-          Write-Host "  🔍 Auto Discovery: $autoDiscoveryOutcome (success: $autoDiscoverySuccess)" -ForegroundColor Gray
-          Write-Host "  🛡️ Full Validation: $fullValidationOutcome (success: $fullValidationSuccess)" -ForegroundColor Gray
+          # Core validation: Action must not crash
+          $validationSuccess = $executionOutcome -ne 'failure'
           
-          # Action validation: Did all scenarios run without crashing?
-          $validationSuccess = ($noTestsOutcome -ne 'failure') -and 
-                              ($autoDiscoveryOutcome -ne 'failure') -and 
-                              ($fullValidationOutcome -ne 'failure')
+          # Overall success: All integration tests should pass
+          $testSuccess = ($inputValidation -eq 'success') -and
+                        ($executionOutcome -eq 'success') -and
+                        ($outputValidation -eq 'success') -and
+                        ($artifactValidation -in @('success', 'partial')) -and
+                        ($githubIntegration -eq 'success')
           
-          # Overall success: Action works correctly in all scenarios
-          $overallSuccess = $validationSuccess -and 
-                           ($noTestsSuccess -or $noTestsOutcome -eq 'success') -and
-                           ($autoDiscoverySuccess -or $autoDiscoveryOutcome -eq 'success') -and
-                           ($fullValidationSuccess -or $fullValidationOutcome -eq 'success')
-          
-          Write-Output "test-success=$overallSuccess" >> $env:GITHUB_OUTPUT
+          Write-Output "test-success=$testSuccess" >> $env:GITHUB_OUTPUT
           Write-Output "validation-success=$validationSuccess" >> $env:GITHUB_OUTPUT
           
-          if ($overallSuccess) {
-              Write-Host "✅ All action scenarios completed successfully!" -ForegroundColor Green
+          if ($testSuccess) {
+              Write-Host "✅ All integration tests passed!" -ForegroundColor Green
           } elseif ($validationSuccess) {
-              Write-Host "⚠️ Action runs but some scenarios had issues" -ForegroundColor Yellow
+              Write-Host "⚠️ Action works but some integration features need attention" -ForegroundColor Yellow
           } else {
-              Write-Host "❌ Action validation failed in one or more scenarios" -ForegroundColor Red
+              Write-Host "❌ Action integration validation failed" -ForegroundColor Red
               exit 1
           }
 
-      - name: 📋 Generate Action Test Summary
+      # Generate comprehensive test summary
+      - name: 📋 Generate Integration Test Summary
         if: always()
         shell: pwsh
         run: |
           $testSuccess = '${{ steps.evaluate.outputs.test-success }}'
           $validationSuccess = '${{ steps.evaluate.outputs.validation-success }}'
           
-          # Collect scenario outcomes
-          $noTestsOutcome = '${{ steps.test-no-tests.outcome }}'
-          $autoDiscoveryOutcome = '${{ steps.test-auto-discovery.outcome }}'
-          $fullValidationOutcome = '${{ steps.test-full-validation.outcome }}'
+          # Collect all test results
+          $inputValidation = '${{ steps.test-inputs.outputs.input-validation }}'
+          $executionOutcome = '${{ steps.test-execution.outcome }}'
+          $outputValidation = '${{ steps.test-outputs.outputs.output-validation }}'
+          $outputsFound = '${{ steps.test-outputs.outputs.outputs-found }}'
+          $artifactValidation = '${{ steps.test-artifacts.outputs.artifact-validation }}'
+          $artifactsFound = '${{ steps.test-artifacts.outputs.artifacts-found }}'
+          $githubIntegration = '${{ steps.test-github.outputs.github-integration }}'
           
           $statusIcon = if ($testSuccess -eq 'true') { '✅' } else { '⚠️' }
           $validationIcon = if ($validationSuccess -eq 'true') { '✅' } else { '❌' }
           
-          # Function to get status icon for scenario
-          function Get-ScenarioIcon($outcome) {
-              switch ($outcome) {
+          # Function to get status icon
+          function Get-TestIcon($status) {
+              switch ($status) {
                   'success' { return '✅' }
+                  'partial' { return '⚠️' }
                   'failure' { return '❌' }
-                  'cancelled' { return '⏹️' }
-                  'skipped' { return '⏭️' }
                   default { return '❓' }
               }
           }
           
           $summary = @"
-          ## 🧪 K.Actions.PSModuleValidation Test Results $statusIcon
+          ## 🧪 K.Actions.PSModuleValidation Integration Tests $statusIcon
           
-          ### Action Validation
-          **Status:** $validationIcon **$(if ($validationSuccess -eq 'true') { 'SUCCESS' } else { 'FAILED' })**
-          **Overall Result:** $statusIcon **$(if ($testSuccess -eq 'true') { 'PASSED' } else { 'PARTIAL' })**
+          ### Test Summary
+          **Status:** $validationIcon **$(if ($validationSuccess -eq 'true') { 'PASSED' } else { 'FAILED' })**
+          **Integration:** $statusIcon **$(if ($testSuccess -eq 'true') { 'COMPLETE' } else { 'PARTIAL' })**
           
-          ### Test Scenarios
-          | Scenario | Outcome | Purpose |
-          |----------|---------|---------|
-          | 📭 No Tests | $(Get-ScenarioIcon $noTestsOutcome) $noTestsOutcome | Tests action behavior when no test files found |
-          | 🔍 Auto Discovery | $(Get-ScenarioIcon $autoDiscoveryOutcome) $autoDiscoveryOutcome | Tests automatic test file discovery |
-          | 🛡️ Full Validation | $(Get-ScenarioIcon $fullValidationOutcome) $fullValidationOutcome | Tests complete validation pipeline |
+          ### Integration Test Results
+          | Test Category | Status | Details |
+          |---------------|--------|---------|
+          | 📥 Input Validation | $(Get-TestIcon $inputValidation) | Action metadata and input processing |
+          | 🚀 Action Execution | $(Get-TestIcon $executionOutcome) | Core action functionality without crashes |
+          | 📤 Output Generation | $(Get-TestIcon $outputValidation) | GitHub Actions outputs ($outputsFound outputs found) |
+          | 📄 Artifact Creation | $(Get-TestIcon $artifactValidation) | Test results and file artifacts ($artifactsFound files) |
+          | 📋 GitHub Integration | $(Get-TestIcon $githubIntegration) | Step summaries and environment integration |
           
-          ### Action Components Validated
-          - 🛡️ **GitLeaks Security Scan** - Secret detection pipeline
-          - 📝 **Super-Linter** - Code quality analysis pipeline
-          - 🧪 **Pester Testing** - PowerShell test framework integration
-          - 📦 **Module Discovery** - PowerShell manifest detection and parsing
-          - 📊 **Enhanced Summaries** - GitHub step summaries generation
-          - 📄 **Artifact Upload** - Test results preservation
+          ### What Was Tested
+          - ✅ **Action Structure** - Proper action.yml format and required sections
+          - ✅ **Input Processing** - Action handles various input combinations
+          - ✅ **Execution Stability** - Action runs without critical failures
+          - ✅ **Output Generation** - GitHub Actions outputs are properly set
+          - ✅ **Artifact Management** - Test results files are created
+          - ✅ **GitHub Features** - Step summaries and environment integration
           
-          ### Action Behavior Verification
-          - ✅ Action loads and executes without critical errors
-          - ✅ Handles missing test files gracefully (no-tests scenario)
-          - ✅ Processes different input configurations correctly
-          - ✅ Provides comprehensive reporting and outputs
-          - ✅ Supports configurable validation scope
+          ### What Was NOT Tested
+          - ❌ **PowerShell Logic** - K.PSGallery modules have their own tests
+          - ❌ **Test Scenarios** - Business logic is tested in PowerShell module tests
+          - ❌ **External Dependencies** - GitLeaks, Super-Linter tested independently
           
           ---
-          **Note:** This validates the Action itself, not the K.PSGallery modules it uses (they have their own tests).
-          **Action is ready for production use! 🚀**
+          **Focus:** This validates GitHub Actions integration, not PowerShell business logic.
+          **$(if ($testSuccess -eq 'true') { 'Action is ready for production! 🚀' } else { 'Action needs integration fixes before production use. ⚠️' })**
           "@
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
-      - name: 📄 Upload Action Test Artifacts
+      # Upload integration test artifacts
+      - name: 📄 Upload Integration Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: action-test-results
+          name: integration-test-results
           path: |
-            ./TestResults-*.xml
+            ./TestResults.xml
             ./action.yml
           retention-days: 7

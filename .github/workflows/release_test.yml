@@ -10,13 +10,16 @@ on:
     outputs:
       test-success:
         description: 'Whether all tests passed'
-        value: ${{ jobs.security-scan.outputs.security-success && jobs.integration-test.outputs.integration-success }}
+        value: ${{ jobs.security-scan.outputs.security-success && jobs.integration-test.outputs.integration-success && jobs.cross-platform-test.outputs.cross-platform-success }}
       security-success:
         description: 'Whether security scans passed'
         value: ${{ jobs.security-scan.outputs.security-success }}
       integration-success:
         description: 'Whether integration tests passed'
         value: ${{ jobs.integration-test.outputs.integration-success }}
+      cross-platform-success:
+        description: 'Whether cross-platform tests passed'
+        value: ${{ jobs.cross-platform-test.outputs.cross-platform-success }}
 
 jobs:
   security-scan:
@@ -93,21 +96,108 @@ jobs:
           Write-Output "sections-found=$sectionsFound" >> $env:GITHUB_OUTPUT
           Write-Output "issues-count=$($issues.Count)" >> $env:GITHUB_OUTPUT
 
+      - name: 📋 Input/Output Schema Validation
+        id: schema-validation
+        shell: pwsh
+        run: |
+          Write-Host "📋 Validating Input/Output Schema..." -ForegroundColor Cyan
+          
+          $actionContent = Get-Content './action.yml' -Raw
+          $schemaIssues = @()
+          
+          # Extract and validate inputs
+          $inputSection = ($actionContent -split 'inputs:')[1] -split 'outputs:' | Select-Object -First 1
+          $inputsValid = 0
+          $inputsTotal = 0
+          
+          if ($inputSection) {
+              $inputMatches = [regex]::Matches($inputSection, '^\s+([a-zA-Z0-9-]+):\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+              $inputsTotal = $inputMatches.Count
+              
+              foreach ($match in $inputMatches) {
+                  $inputName = $match.Groups[1].Value
+                  $inputBlock = ($inputSection -split "$inputName:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
+                  
+                  # Check required fields
+                  $hasDescription = $inputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'
+                  $hasRequired = $inputBlock -match 'required:\s*(true|false)'
+                  $hasDefault = $inputBlock -match 'default:\s*'
+                  $hasType = $inputBlock -match 'type:\s*(string|boolean|choice)'
+                  
+                  if ($hasDescription -and $hasRequired) {
+                      Write-Host "✅ Input '$inputName': Valid schema" -ForegroundColor Green
+                      $inputsValid++
+                  } else {
+                      Write-Host "❌ Input '$inputName': Missing description or required field" -ForegroundColor Red
+                      $schemaIssues += "Input '$inputName' missing required schema fields"
+                  }
+                  
+                  # Check for choice type validation
+                  if ($hasType -and $inputBlock -match 'type:\s*choice' -and $inputBlock -notmatch 'options:') {
+                      Write-Host "⚠️ Input '$inputName': Choice type without options" -ForegroundColor Yellow
+                      $schemaIssues += "Input '$inputName' is choice type but missing options"
+                  }
+              }
+          }
+          
+          # Extract and validate outputs
+          $outputSection = ($actionContent -split 'outputs:')[1] -split 'runs:' | Select-Object -First 1
+          $outputsValid = 0
+          $outputsTotal = 0
+          
+          if ($outputSection) {
+              $outputMatches = [regex]::Matches($outputSection, '^\s+([a-zA-Z0-9-]+):\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+              $outputsTotal = $outputMatches.Count
+              
+              foreach ($match in $outputMatches) {
+                  $outputName = $match.Groups[1].Value
+                  $outputBlock = ($outputSection -split "$outputName:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
+                  
+                  # Check required fields
+                  $hasDescription = $outputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'
+                  $hasValue = $outputBlock -match 'value:\s*'
+                  
+                  if ($hasDescription -and $hasValue) {
+                      Write-Host "✅ Output '$outputName': Valid schema" -ForegroundColor Green
+                      $outputsValid++
+                  } else {
+                      Write-Host "❌ Output '$outputName': Missing description or value" -ForegroundColor Red
+                      $schemaIssues += "Output '$outputName' missing required schema fields"
+                  }
+              }
+          }
+          
+          $schemaSuccess = $schemaIssues.Count -eq 0 -and $inputsTotal -gt 0 -and $outputsTotal -gt 0
+          
+          Write-Host "📊 Schema validation results:" -ForegroundColor Cyan
+          Write-Host "   📥 Inputs: $inputsValid/$inputsTotal valid" -ForegroundColor Gray
+          Write-Host "   📤 Outputs: $outputsValid/$outputsTotal valid" -ForegroundColor Gray
+          Write-Host "   ❌ Issues: $($schemaIssues.Count)" -ForegroundColor Gray
+          
+          Write-Output "schema-success=$schemaSuccess" >> $env:GITHUB_OUTPUT
+          Write-Output "inputs-valid=$inputsValid" >> $env:GITHUB_OUTPUT
+          Write-Output "inputs-total=$inputsTotal" >> $env:GITHUB_OUTPUT
+          Write-Output "outputs-valid=$outputsValid" >> $env:GITHUB_OUTPUT
+          Write-Output "outputs-total=$outputsTotal" >> $env:GITHUB_OUTPUT
+          Write-Output "schema-issues=$($schemaIssues.Count)" >> $env:GITHUB_OUTPUT
+
       - name: 📊 Evaluate Security Results
         id: evaluate-security
         shell: pwsh
         run: |
           $gitleaksOutcome = '${{ steps.gitleaks.outcome }}'
           $structureSuccess = '${{ steps.structure-check.outputs.structure-success }}'
+          $schemaSuccess = '${{ steps.schema-validation.outputs.schema-success }}'
           $actionName = '${{ steps.structure-check.outputs.action-name }}'
           $actionType = '${{ steps.structure-check.outputs.action-type }}'
           
           Write-Host "🔍 Security evaluation for: $actionName ($actionType)" -ForegroundColor Cyan
           Write-Host "  🛡️ GitLeaks: $gitleaksOutcome" -ForegroundColor Gray
           Write-Host "  📋 Structure: $structureSuccess" -ForegroundColor Gray
+          Write-Host "  📋 Schema: $schemaSuccess" -ForegroundColor Gray
           
-          # Security success: GitLeaks should not fail AND structure should be valid
-          $securitySuccess = ($gitleaksOutcome -ne 'failure') -and ($structureSuccess -eq 'true')
+          # Security success: GitLeaks should not fail AND structure AND schema should be valid
+          $securitySuccess = ($gitleaksOutcome -ne 'failure') -and ($structureSuccess -eq 'true') -and ($schemaSuccess -eq 'true')
           
           Write-Output "security-success=$securitySuccess" >> $env:GITHUB_OUTPUT
           
@@ -392,3 +482,103 @@ jobs:
           "@
           
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
+  cross-platform-test:
+    name: 🖥️ Cross-Platform Compatibility
+    runs-on: ${{ matrix.os }}
+    needs: security-scan
+    outputs:
+      cross-platform-success: ${{ steps.platform-test.outputs.success }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, windows-2022]
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🧪 Platform Compatibility Test
+        id: platform-test
+        shell: bash
+        run: |
+          echo "�️ Testing ${{ matrix.os }} compatibility..."
+          
+          # Detect PowerShell
+          if command -v pwsh >/dev/null 2>&1; then
+            PS_CMD="pwsh"
+            PS_VER=$(pwsh -c '$PSVersionTable.PSVersion.ToString()')
+          elif command -v powershell >/dev/null 2>&1; then
+            PS_CMD="powershell"
+            PS_VER=$(powershell -c '$PSVersionTable.PSVersion.ToString()')
+          else
+            echo "❌ No PowerShell found"
+            echo "success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          echo "✅ PowerShell: $PS_CMD $PS_VER"
+          
+          # Run compatibility tests
+          $PS_CMD -c '
+            $tests = @("Action YAML parsing", "File operations", "Environment access")
+            $results = @()
+            
+            # Test 1: Action parsing
+            try {
+              $actionContent = Get-Content "./action.yml" -Raw
+              $actionName = ($actionContent | Select-String -Pattern "name:\s*[\"\"\"'\"\"\"']?([^\"\"\"'\"\"\"']+)" | ForEach-Object { $_.Matches[0].Groups[1].Value }).Trim()
+              $results += "✅ $($tests[0]): $actionName"
+              $test1 = $true
+            } catch {
+              $results += "❌ $($tests[0]): Failed"
+              $test1 = $false
+            }
+            
+            # Test 2: File operations
+            try {
+              $testFile = "test-$([System.Guid]::NewGuid().ToString().Substring(0,6)).tmp"
+              "test" | Out-File $testFile -Encoding UTF8
+              $null = Get-Content $testFile
+              Remove-Item $testFile -Force
+              $results += "✅ $($tests[1]): OK"
+              $test2 = $true
+            } catch {
+              $results += "❌ $($tests[1]): Failed"
+              $test2 = $false
+            }
+            
+            # Test 3: Environment
+            try {
+              $workspace = $env:GITHUB_WORKSPACE
+              $runner = $env:RUNNER_OS
+              $results += "✅ $($tests[2]): $runner"
+              $test3 = $true
+            } catch {
+              $results += "❌ $($tests[2]): Failed"
+              $test3 = $false
+            }
+            
+            $results | ForEach-Object { Write-Host $_ }
+            $success = $test1 -and $test2 -and $test3
+            Write-Output "success=$success" >> $env:GITHUB_OUTPUT
+            Write-Output "ps-version=$env:PS_VER" >> $env:GITHUB_OUTPUT
+          '
+          
+          echo "ps-command=$PS_CMD" >> $GITHUB_OUTPUT
+
+      - name: 📊 Platform Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $success = '${{ steps.platform-test.outputs.success }}'
+          $psCmd = '${{ steps.platform-test.outputs.ps-command }}'
+          $psVer = '${{ steps.platform-test.outputs.ps-version }}'
+          $icon = if ($success -eq 'true') { '✅' } else { '❌' }
+          
+          Write-Host "$icon Cross-platform test: ${{ matrix.os }}" -ForegroundColor $(if ($success -eq 'true') { 'Green' } else { 'Red' })
+          Write-Host "   PowerShell: $psCmd $psVer" -ForegroundColor Gray
+          
+          $summary = "## 🖥️ ${{ matrix.os }} $icon`n**PowerShell:** $psCmd $psVer`n**Status:** $(if ($success -eq 'true') { 'Compatible' } else { 'Issues detected' })"
+          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+          
+          if ($success -ne 'true') { exit 1 }

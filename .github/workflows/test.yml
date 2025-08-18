@@ -17,7 +17,7 @@ on:
 
 jobs:
   action-test:
-    name: 🎯 Test Action Integration
+    name: 🎯 Test Action Integration 
     runs-on: ubuntu-latest
     outputs:
       test-success: ${{ steps.evaluate.outputs.test-success }}

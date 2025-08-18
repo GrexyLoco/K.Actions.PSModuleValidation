@@ -116,7 +116,7 @@ jobs:
               
               foreach ($match in $inputMatches) {
                   $inputName = $match.Groups[1].Value
-                  $inputBlock = ($inputSection -split "$inputName:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
+                  $inputBlock = ($inputSection -split "${inputName}:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
                   
                   # Check required fields
                   $hasDescription = $inputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'
@@ -151,7 +151,7 @@ jobs:
               
               foreach ($match in $outputMatches) {
                   $outputName = $match.Groups[1].Value
-                  $outputBlock = ($outputSection -split "$outputName:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
+                  $outputBlock = ($outputSection -split "${outputName}:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
                   
                   # Check required fields
                   $hasDescription = $outputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'

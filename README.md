@@ -23,7 +23,7 @@ Comprehensive validation action for PowerShell modules featuring security scans,
 - **🛡️ Security Scanning**: GitLeaks for secret detection
 - **📝 Code Quality**: Super-Linter with PSScriptAnalyzer, JSCPD, and more
 - **🧪 Automated Testing**: Pester v5 with code coverage
-- **📊 Rich Reporting**: Detailed GitHub summaries with metrics
+- **📊 Rich Reporting**: Detailed GitHub summaries with metrics 
 - **⚡ High Performance**: Optimized for CI/CD pipelines
 - **🔧 Configurable**: Flexible inputs for various project needs
 

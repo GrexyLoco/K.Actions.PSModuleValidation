@@ -249,3 +249,130 @@ jobs:
           "@
           }
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
+  # 🎖️ Update badges ONLY after successful release
+  update-success-badges:
+    name: 🎖️ Update Success Badges After Release
+    runs-on: ubuntu-latest
+    needs: [run-tests, create-release]
+    if: success() && needs.create-release.result == 'success'
+    permissions:
+      contents: write  # Required to push README changes
+      actions: read    # Required to read workflow status
+      
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: 🎖️ Generate Success Badges
+        id: create-success-badges
+        shell: pwsh
+        run: |
+          Write-Host "🎖️ Generating success badges after successful release..." -ForegroundColor Green
+          
+          # All tests passed if we reached this point
+          $overallStatus = 'passing'
+          $statusColor = 'green'
+          
+          # Generate success badges
+          $testsBadge = "![Tests](https://img.shields.io/badge/Tests-passing-green)"
+          $securityBadge = "![Security](https://img.shields.io/badge/Security-passing-green)"
+          $integrationBadge = "![Integration](https://img.shields.io/badge/Integration-passing-green)"
+          $crossPlatformBadge = "![Cross-Platform](https://img.shields.io/badge/Cross--Platform-passing-green)"
+          
+          # Platform badges
+          $ubuntuBadge = "![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04-compatible-green)"
+          $windowsBadge = "![Windows](https://img.shields.io/badge/Windows_2022-compatible-green)"
+          
+          # Store badge data
+          Write-Output "tests-badge=$testsBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "security-badge=$securityBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "integration-badge=$integrationBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "cross-platform-badge=$crossPlatformBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "ubuntu-badge=$ubuntuBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "windows-badge=$windowsBadge" >> $env:GITHUB_OUTPUT
+          Write-Output "overall-status=$overallStatus" >> $env:GITHUB_OUTPUT
+          
+          Write-Host "✅ Success badges generated!" -ForegroundColor Green
+
+      - name: 📝 Update README with Success Badges
+        id: update-readme
+        shell: pwsh
+        run: |
+          Write-Host "📝 Updating README.md with success badges..." -ForegroundColor Cyan
+          
+          # Get badge data
+          $testsBadge = '${{ steps.create-success-badges.outputs.tests-badge }}'
+          $securityBadge = '${{ steps.create-success-badges.outputs.security-badge }}'
+          $integrationBadge = '${{ steps.create-success-badges.outputs.integration-badge }}'
+          $crossPlatformBadge = '${{ steps.create-success-badges.outputs.cross-platform-badge }}'
+          $ubuntuBadge = '${{ steps.create-success-badges.outputs.ubuntu-badge }}'
+          $windowsBadge = '${{ steps.create-success-badges.outputs.windows-badge }}'
+          
+          $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'
+          $runNumber = '${{ github.run_number }}'
+          $version = '${{ needs.create-release.outputs.version }}'
+          
+          # Create success badge section
+          $badgeSection = @"
+          <!-- AUTO-GENERATED TEST BADGES - DO NOT EDIT MANUALLY -->
+          ## 🧪 Current Test Status
+          
+          $testsBadge $securityBadge $integrationBadge $crossPlatformBadge
+          
+          ### Platform Compatibility
+          $ubuntuBadge $windowsBadge
+          
+          > 📊 **Status**: passing | **Updated**: $timestamp | **Version**: $version | **Auto-generated**
+          <!-- END AUTO-GENERATED TEST BADGES -->
+          "@
+          
+          # Read and update README
+          $readmePath = './README.md'
+          $readmeContent = Get-Content $readmePath -Raw
+          
+          # Replace badge section
+          $badgeStartPattern = '<!-- AUTO-GENERATED TEST BADGES - DO NOT EDIT MANUALLY -->'
+          $badgeEndPattern = '<!-- END AUTO-GENERATED TEST BADGES -->'
+          
+          if ($readmeContent -match "(?s)$([regex]::Escape($badgeStartPattern)).*?$([regex]::Escape($badgeEndPattern))") {
+              $updatedContent = $readmeContent -replace "(?s)$([regex]::Escape($badgeStartPattern)).*?$([regex]::Escape($badgeEndPattern))", $badgeSection
+              Write-Host "✅ Updated existing badge section" -ForegroundColor Green
+          } else {
+              # Add new section after license badge
+              if ($readmeContent -match '(\[!\[License\].*?\]\(LICENSE\))(\r?\n)') {
+                  $insertionPoint = $matches[0]
+                  $updatedContent = $readmeContent -replace [regex]::Escape($insertionPoint), "$insertionPoint`n`n$badgeSection`n"
+                  Write-Host "✅ Added new badge section" -ForegroundColor Green
+              } else {
+                  Write-Host "⚠️ Could not find insertion point for badges" -ForegroundColor Yellow
+                  exit 1
+              }
+          }
+          
+          # Write updated content
+          $updatedContent | Out-File $readmePath -Encoding UTF8 -NoNewline
+          Write-Output "badges-updated=true" >> $env:GITHUB_OUTPUT
+
+      - name: 💾 Commit Success Badge Updates
+        if: steps.update-readme.outputs.badges-updated == 'true'
+        shell: pwsh
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          git add README.md
+          $version = '${{ needs.create-release.outputs.version }}'
+          
+          git commit -m "🎖️ Update badges after successful release $version
+
+          All tests passed and release $version was successfully created!
+          
+          [skip ci]"
+          
+          git push
+          
+          Write-Host "✅ Success badges updated and committed!" -ForegroundColor Green

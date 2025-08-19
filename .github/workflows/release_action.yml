@@ -7,7 +7,13 @@ permissions:
   pull-requests: read # Required for reading PR information
 
 on:
-  # Only manual trigger for action releases
+  # Automatic trigger on push to main/master branches
+  push:
+    branches: [ master, main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  # Manual trigger for action releases
   workflow_dispatch:
     inputs:
       release-type:

@@ -116,7 +116,7 @@ jobs:
           
           # Create simple changelog
           $changelogLines = @()
-          $changelogLines += "## What's Changed in $version"
+          $changelogLines += "## What''s Changed in $version"
           $changelogLines += ""
           $changelogLines += "### 🚀 Features & Improvements"
           if ($commits) {
@@ -144,16 +144,13 @@ jobs:
               $changelogLines += "**Full Changelog**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/compare/$latestTag...$version"
           }
           
-          # Join and escape properly for GitHub Actions
+          # Join changelog lines
           $changelog = $changelogLines -join "`n"
-          $escapedChangelog = $changelog -replace '"', '""' -replace "`r?`n", "%0A" -replace "'", "''"
           
-          # Write to GitHub output using multiline syntax
-          @"
-          changelog<<EOF
-          $changelog
-          EOF
-          "@ | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          # Write to GitHub output using separate commands to avoid quoting issues
+          "changelog<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $changelog | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: 🏷️ Create Release Tag
         if: steps.release-check.outputs.skip-release != 'true'

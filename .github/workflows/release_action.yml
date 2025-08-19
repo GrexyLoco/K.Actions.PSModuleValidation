@@ -1,4 +1,4 @@
-name: 🚀 Release K.Actions.PSModuleValidation
+name: 🚀 Action Release Pipeline
 
 # Global permissions for the workflow
 permissions:
@@ -7,11 +7,7 @@ permissions:
   pull-requests: read # Required for reading PR information
 
 on:
-  push:
-    branches: [ master, main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+  # Only manual trigger for action releases
   workflow_dispatch:
     inputs:
       release-type:
@@ -28,12 +24,24 @@ on:
         required: false
         default: false
         type: boolean
+      test-scope:
+        description: 'Scope of tests to run before release'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+        - 'full'
+        - 'security-only'
+        - 'integration-only'
+        - 'cross-platform-only'
 
 jobs:
   # 🧪 First run ALL tests - Release ONLY if tests pass!
   run-tests:
-    name: 🧪 Run Test Suite
-    uses: ./.github/workflows/release_test.yml
+    name: 🧪 Run Action Release Tests
+    uses: ./.github/workflows/release_action_test.yml
+    with:
+      test-scope: ${{ inputs.test-scope || 'full' }}
     permissions:
       contents: write  # Required for badge updates to README
       actions: read    # Required to read workflow status

@@ -1,5 +1,11 @@
 name: 🚀 Release K.Actions.PSModuleValidation
 
+# Global permissions for the workflow
+permissions:
+  contents: write    # Required for creating releases and updating README
+  actions: read      # Required to read workflow status
+  pull-requests: read # Required for reading PR information
+
 on:
   push:
     branches: [ master, main ]
@@ -28,6 +34,11 @@ jobs:
   run-tests:
     name: 🧪 Run Test Suite
     uses: ./.github/workflows/release_test.yml
+    permissions:
+      contents: write  # Required for badge updates to README
+      actions: read    # Required to read workflow status
+      pull-requests: read  # Required for PR information
+    secrets: inherit  # Pass all secrets to the reusable workflow
     
   # 📦 Release job depends on successful tests
   create-release:
@@ -132,7 +143,7 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          $testSuccess = '${{ needs.run-tests.outputs.validation-success }}'
+          $testSuccess = '${{ needs.run-tests.outputs.test-success }}'
           
           $summary = @"
           ## 🚀 Release Complete - $version

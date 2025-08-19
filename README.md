@@ -8,12 +8,12 @@
 <!-- AUTO-GENERATED TEST BADGES - DO NOT EDIT MANUALLY -->
 ## 🧪 Current Test Status
 
-![Tests](https://img.shields.io/badge/Tests-passing-green) ![Security](https://img.shields.io/badge/Security-passing-green) ![Integration](https://img.shields.io/badge/Integration-passing-green) ![Cross-Platform](https://img.shields.io/badge/Cross--Platform-passing-green)
+![Tests](https://img.shields.io/badge/Tests-failing-red) ![Security](https://img.shields.io/badge/Security-failing-red) ![Integration](https://img.shields.io/badge/Integration-failing-red) ![Cross-Platform](https://img.shields.io/badge/Cross--Platform-failing-red)
 
 ### Platform Compatibility
-![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04-compatible-green) ![Windows](https://img.shields.io/badge/Windows_2022-compatible-green)
+![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04-issues-orange) ![Windows](https://img.shields.io/badge/Windows_2022-issues-orange)
 
-> 📊 **Status**: passing | **Updated**: 2025-08-19 00:21:31 UTC | **Run**: #1 | **Auto-generated**
+> 📊 **Status**: failing | **Updated**: 2025-08-19 00:24:47 UTC | **Run**: #2 | **Auto-generated**
 <!-- END AUTO-GENERATED TEST BADGES -->
 
 Comprehensive validation action for PowerShell modules featuring security scans, code quality analysis, and automated testing with enterprise-grade reporting.

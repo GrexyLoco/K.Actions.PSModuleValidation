@@ -61,7 +61,7 @@ jobs:
     needs: run-tests
     if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (needs.run-tests.outputs.test-success == 'true' || github.event.inputs.force-release == 'true')
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.version.outputs.newVersion }}
       changelog: ${{ steps.changelog.outputs.changelog }}
     
     steps:
@@ -73,17 +73,39 @@ jobs:
 
       - name: ⬆️ Analyze next version
         id: version
-        uses: GrexyLoco/K.Actions.NextVersion@latest
+        uses: GrexyLoco/K.Actions.NextActionVersion@master
         with:
           branchName: ${{ github.ref_name }}
 
+      - name: 🔍 Check if release needed
+        id: release-check
+        shell: pwsh
+        run: |
+          $bumpType = '${{ steps.version.outputs.bumpType }}'
+          $forceRelease = '${{ github.event.inputs.force-release }}'
+          
+          Write-Host "🔍 Release Analysis:" -ForegroundColor Cyan
+          Write-Host "  Current Version: ${{ steps.version.outputs.currentVersion }}" -ForegroundColor White
+          Write-Host "  New Version: ${{ steps.version.outputs.newVersion }}" -ForegroundColor White
+          Write-Host "  Bump Type: $bumpType" -ForegroundColor White
+          Write-Host "  Force Release: $forceRelease" -ForegroundColor White
+          
+          if ($bumpType -eq 'none' -and $forceRelease -ne 'true') {
+            Write-Host "⏭️ No version changes detected - skipping release" -ForegroundColor Yellow
+            Write-Output "skip-release=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "✅ Release will be created" -ForegroundColor Green
+            Write-Output "skip-release=false" >> $env:GITHUB_OUTPUT
+          }
+
       - name: 📝 Generate Changelog
         id: changelog
+        if: steps.release-check.outputs.skip-release != 'true'
         shell: pwsh
         run: |
           Write-Host "📝 Generating changelog..." -ForegroundColor Cyan
           
-          $version = '${{ steps.version.outputs.version }}'
+          $version = '${{ steps.version.outputs.newVersion }}'
           $latestTag = git describe --tags --abbrev=0 2>$null
           
           if ($latestTag) {
@@ -121,9 +143,10 @@ jobs:
           Write-Output "changelog=$changelog" >> $env:GITHUB_OUTPUT
 
       - name: 🏷️ Create Release Tag
+        if: steps.release-check.outputs.skip-release != 'true'
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.version }}'
+          $version = '${{ steps.version.outputs.newVersion }}'
           
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -142,11 +165,12 @@ jobs:
           git push origin $version
 
       - name: 📦 Create GitHub Release
+        if: steps.release-check.outputs.skip-release != 'true'
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = '${{ steps.version.outputs.version }}'
+          $version = '${{ steps.version.outputs.newVersion }}'
           $changelog = '${{ steps.changelog.outputs.changelog }}'
           
           # Create release using GitHub CLI
@@ -156,10 +180,37 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.version }}'
+          $version = '${{ steps.version.outputs.newVersion }}'
+          $currentVersion = '${{ steps.version.outputs.currentVersion }}'
+          $bumpType = '${{ steps.version.outputs.bumpType }}'
+          $skipRelease = '${{ steps.release-check.outputs.skip-release }}'
           $testSuccess = '${{ needs.run-tests.outputs.test-success }}'
           
-          $summary = @"
+          if ($skipRelease -eq 'true') {
+            $summary = @"
+          ## ⏭️ No Release Required
+          
+          ### 📊 Analysis Results
+          **Current Version:** $currentVersion
+          **Bump Type:** $bumpType
+          **Status:** ✅ NO CHANGES DETECTED
+          
+          ### 🔍 Why No Release?
+          - No semantic version changes since last tag
+          - Use manual trigger with force-release to override
+          
+          ### 🧪 Test Results
+          **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })
+          
+          ### 📋 Next Steps
+          - Make commits with conventional format (\`feat:\`, \`fix:\`, \`BREAKING CHANGE:\`)
+          - Or use manual workflow dispatch with force-release option
+          
+          ---
+          **Repository is up-to-date! 🎉**
+          "@
+          } else {
+            $summary = @"
           ## 🚀 Release Complete - $version
           
           ### 📊 Release Status
@@ -186,4 +237,5 @@ jobs:
           ---
           **Action is ready for production use across all PowerShell modules! 🎉**
           "@
+          }
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY

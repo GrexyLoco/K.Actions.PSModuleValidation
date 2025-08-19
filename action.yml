@@ -1,4 +1,5 @@
 name: 'K.Actions.PSModuleValidation'
+# version: 1.0.0
 description: 'Comprehensive validation of PowerShell modules: security scans, linting, and testing with enterprise-grade reporting'
 author: 'GrexyLoco'
 

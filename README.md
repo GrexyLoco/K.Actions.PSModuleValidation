@@ -240,7 +240,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🏷️ Versioning
 
-This action follows [Semantic Versioning](https://semver.org/). For the versions available, see the [tags on this repository](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/tags).
+This action follows [Semantic Versioning](https://semver.org/) with **automated releases** using [K.Actions.NextActionVersion](https://github.com/GrexyLoco/K.Actions.NextActionVersion).
+
+### Release Automation
+- **Conventional Commits**: Use `feat:`, `fix:`, `BREAKING CHANGE:` for automatic version bumps
+- **Git Tag-Based**: Versions are calculated from Git history, not manifest files  
+- **Smart Detection**: Only creates releases when changes warrant a version bump
+- **Branch Patterns**: `feature/` → minor, `bugfix/` → patch, `major/` → major
+
+### Available Versions
+See the [releases page](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/releases) for all versions, or reference the [tags](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/tags).
 
 ## 🐛 Issues & Support
 

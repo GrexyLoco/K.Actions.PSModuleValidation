@@ -600,12 +600,12 @@ jobs:
           
           if ($success -ne 'true') { exit 1 }
 
-  # 🎖️ Generate badges AFTER all tests are complete
+  # 🎖️ Generate badges ONLY for successful releases (not test runs!)
   generate-badges:
     name: 🎖️ Generate Test Badges & Update README
     runs-on: ubuntu-latest
     needs: [security-scan, integration-test, cross-platform-test]
-    if: always() && inputs.test-scope == 'full' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.actor != 'dependabot[bot]'
+    if: always() && inputs.test-scope == 'full' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && github.actor != 'dependabot[bot]' && github.event_name != 'workflow_call'
     permissions:
       contents: write  # Required to push changes to README
       actions: read    # Required to read workflow status

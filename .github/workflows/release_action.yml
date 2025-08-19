@@ -111,36 +111,49 @@ jobs:
           if ($latestTag) {
               $commits = git log --pretty=format:"- %s" "$latestTag..HEAD"
           } else {
-              $commits = git log --pretty=format:"- %s"
+              $commits = git log --pretty=format:"- %s" | Select-Object -First 10
           }
           
-          $changelog = @"
-          ## What's Changed in $version
+          # Create simple changelog
+          $changelogLines = @()
+          $changelogLines += "## What's Changed in $version"
+          $changelogLines += ""
+          $changelogLines += "### 🚀 Features & Improvements"
+          if ($commits) {
+              $changelogLines += $commits
+          } else {
+              $changelogLines += "- Initial release"
+          }
+          $changelogLines += ""
+          $changelogLines += "### 🛡️ Action Capabilities"
+          $changelogLines += "- **Security Scanning**: GitLeaks + Super-Linter"
+          $changelogLines += "- **PowerShell Testing**: Pester v5 with code coverage"
+          $changelogLines += "- **Enhanced Reporting**: Rich GitHub step summaries"
+          $changelogLines += "- **Enterprise Ready**: Fully parametrized for reuse"
+          $changelogLines += ""
+          $changelogLines += "### 📋 Usage"
+          $changelogLines += '```yaml'
+          $changelogLines += "- name: Validate PowerShell Module"
+          $changelogLines += "  uses: GrexyLoco/K.Actions.PSModuleValidation@$version"
+          $changelogLines += "  with:"
+          $changelogLines += '    github-token: ${{ secrets.GITHUB_TOKEN }}'
+          $changelogLines += "    module-name: 'YourModule'"
+          $changelogLines += '```'
+          if ($latestTag) {
+              $changelogLines += ""
+              $changelogLines += "**Full Changelog**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/compare/$latestTag...$version"
+          }
           
-          ### 🚀 Features & Improvements
-          $($commits -join "`n")
+          # Join and escape properly for GitHub Actions
+          $changelog = $changelogLines -join "`n"
+          $escapedChangelog = $changelog -replace '"', '""' -replace "`r?`n", "%0A" -replace "'", "''"
           
-          ### 🛡️ Action Capabilities
-          - **Security Scanning**: GitLeaks + Super-Linter
-          - **PowerShell Testing**: Pester v5 with code coverage
-          - **Enhanced Reporting**: Rich GitHub step summaries
-          - **Enterprise Ready**: Fully parametrized for reuse
-          
-          ### 📋 Usage
-          \`\`\`yaml
-          - name: Validate PowerShell Module
-            uses: GrexyLoco/K.Actions.PSModuleValidation@$version
-            with:
-              github-token: \${{ secrets.GITHUB_TOKEN }}
-              module-name: 'YourModule'
-          \`\`\`
-          
-          **Full Changelog**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/compare/$latestTag...$version
-          "@
-          
-          # Escape for GitHub output
-          $changelog = $changelog -replace '"','\"' -replace '\r?\n','%0A'
-          Write-Output "changelog=$changelog" >> $env:GITHUB_OUTPUT
+          # Write to GitHub output using multiline syntax
+          @"
+          changelog<<EOF
+          $changelog
+          EOF
+          "@ | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - name: 🏷️ Create Release Tag
         if: steps.release-check.outputs.skip-release != 'true'

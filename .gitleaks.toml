@@ -1,0 +1,89 @@
+# Gitleaks configuration for GitHub, Azure, .NET environments
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+redact = true # Mask secrets in reports
+
+[allowlist]
+# Ignore test files, dummy secrets, and CI/CD tokens
+files = [
+  "README.md",
+  "*.test.*",
+  "*.spec.*",
+  "docs/*"
+]
+# Ignore specific commit authors (e.g. bots)
+authors = [
+  "github-actions[bot]",
+  "dependabot[bot]"
+]
+
+[secrets]
+# Example: Ignore known dummy/test secrets
+# [[secrets]]
+# description = "Dummy API Key"
+# regex = "dummy-api-key-[0-9a-zA-Z]+"
+
+[[rules]]
+description = "Generic API Key"
+regex = "(?i)api[_-]?key[\"'\s:=]+[0-9a-zA-Z]{16,}"
+tags = ["key", "API"]
+
+[[rules]]
+description = "Generic Password"
+regex = "(?i)password[\"'\s:=]+[0-9a-zA-Z!@#$%^&*()_+\-=]{8,}"
+tags = ["password"]
+
+[[rules]]
+description = "AWS Access Key ID"
+regex = "AKIA[0-9A-Z]{16}"
+tags = ["AWS", "key"]
+
+[[rules]]
+description = "AWS Secret Access Key"
+regex = "(?i)aws(.{0,20})?['\"]?([0-9a-zA-Z/+]{40})['\"]?"
+tags = ["AWS", "secret"]
+
+[[rules]]
+description = "Azure Storage Account Key"
+regex = "(?i)AccountKey[\"'\s:=]+[0-9a-zA-Z/+]{88}"
+tags = ["Azure", "key"]
+
+[[rules]]
+description = "Azure SAS Token"
+regex = "(?i)sv=\d{4}-\d{2}-\d{2}&ss=[a-z]+&srt=[a-z]+&sp=[a-z]+&se=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z&st=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z&spr=https?&sig=[0-9a-zA-Z%/+]{64,}"
+tags = ["Azure", "SAS", "token"]
+
+[[rules]]
+description = "GitHub Personal Access Token"
+regex = "ghp_[0-9a-zA-Z]{36}"
+tags = ["GitHub", "token"]
+
+[[rules]]
+description = "GitHub OAuth Token"
+regex = "gho_[0-9a-zA-Z]{36}"
+tags = ["GitHub", "token"]
+
+[[rules]]
+description = "GitHub Fine-Grained PAT"
+regex = "github_pat_[0-9a-zA-Z_]{82}"
+tags = ["GitHub", "token"]
+
+[[rules]]
+description = ".NET Machine Key"
+regex = "(?i)<machineKey.*validationKey=\"[0-9a-fA-F]{64,}\".*decryptionKey=\"[0-9a-fA-F]{64,}\".*\/?>"
+tags = [".NET", "key"]
+
+[[rules]]
+description = ".NET Connection String Password"
+regex = "(?i)Password=[^;\r\n]+"
+tags = [".NET", "password", "connectionstring"]
+
+# Add more rules as needed for your environment
+
+# === Explanation ===
+# redact = true         - Maskiert gefundene Secrets im Report
+# [allowlist]           - Ignoriert bestimmte Dateien/Autoren
+# [[rules]]             - Custom Regex für GitHub, Azure, .NET
+# [secrets]             - Dummy/Test-Secrets gezielt ignorieren
+#
+# Siehe https://github.com/gitleaks/gitleaks#configuration für alle Optionen.

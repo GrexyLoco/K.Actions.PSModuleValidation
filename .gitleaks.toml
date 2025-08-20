@@ -24,56 +24,67 @@ authors = [
 # regex = "dummy-api-key-[0-9a-zA-Z]+"
 
 [[rules]]
+id = "generic-api-key"
 description = "Generic API Key"
 regex = "(?i)api[_-]?key[ =:]+[0-9a-zA-Z]{16,}"
 tags = ["key", "API"]
 
 [[rules]]
+id = "generic-password"
 description = "Generic Password"
 regex = "(?i)password[ =:]+[0-9a-zA-Z!@#$%^&*()_+-=]{8,}"
 tags = ["password"]
 
 [[rules]]
+id = "aws-access-key-id"
 description = "AWS Access Key ID"
 regex = "AKIA[0-9A-Z]{16}"
 tags = ["AWS", "key"]
 
 [[rules]]
+id = "aws-secret-access-key"
 description = "AWS Secret Access Key"
 regex = "(?i)aws(.{0,20})?[\"]?([0-9a-zA-Z/+]{40})[\"]?"
 tags = ["AWS", "secret"]
 
 [[rules]]
+id = "azure-storage-account-key"
 description = "Azure Storage Account Key"
 regex = "(?i)AccountKey[ =:]+[0-9a-zA-Z/+]{88}"
 tags = ["Azure", "key"]
 
 [[rules]]
+id = "azure-sas-token"
 description = "Azure SAS Token"
 regex = "(?i)sv=\\d{4}-\\d{2}-\\d{2}&ss=[a-z]+&srt=[a-z]+&sp=[a-z]+&se=\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z&st=\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z&spr=https?&sig=[0-9a-zA-Z%/+]{64,}"
 tags = ["Azure", "SAS", "token"]
 
 [[rules]]
+id = "github-personal-access-token"
 description = "GitHub Personal Access Token"
 regex = "ghp_[0-9a-zA-Z]{36}"
 tags = ["GitHub", "token"]
 
 [[rules]]
+id = "github-oauth-token"
 description = "GitHub OAuth Token"
 regex = "gho_[0-9a-zA-Z]{36}"
 tags = ["GitHub", "token"]
 
 [[rules]]
+id = "github-fine-grained-pat"
 description = "GitHub Fine-Grained PAT"
 regex = "github_pat_[0-9a-zA-Z_]{82}"
 tags = ["GitHub", "token"]
 
 [[rules]]
+id = "dotnet-machine-key"
 description = ".NET Machine Key"
 regex = "(?i)<machineKey.*validationKey=\"[0-9a-fA-F]{64,}\".*decryptionKey=\"[0-9a-fA-F]{64,}\".*\\/?>"
 tags = [".NET", "key"]
 
 [[rules]]
+id = "dotnet-connection-string-password"
 description = ".NET Connection String Password"
 regex = "(?i)Password=[^;\\r\\n]+"
 tags = [".NET", "password", "connectionstring"]

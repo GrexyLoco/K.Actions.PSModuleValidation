@@ -26,11 +26,13 @@ authors = [
 [[rules]]
 description = "Generic API Key"
 regex = "(?i)api[_-]?key["' =:]+[0-9a-zA-Z]{16,}"
+regex = "(?i)api[_-]?key[" =:]+[0-9a-zA-Z]{16,}"
 tags = ["key", "API"]
 
 [[rules]]
 description = "Generic Password"
 regex = "(?i)password["' =:]+[0-9a-zA-Z!@#$%^&*()_+\-=]{8,}"
+regex = "(?i)password[" =:]+[0-9a-zA-Z!@#$%^&*()_+\-=]{8,}"
 tags = ["password"]
 
 [[rules]]
@@ -41,11 +43,13 @@ tags = ["AWS", "key"]
 [[rules]]
 description = "AWS Secret Access Key"
 regex = "(?i)aws(.{0,20})?['"]?([0-9a-zA-Z/+]{40})['"]?"
+regex = "(?i)aws(.{0,20})?[\"]?([0-9a-zA-Z/+]{40})[\"]?"
 tags = ["AWS", "secret"]
 
 [[rules]]
 description = "Azure Storage Account Key"
 regex = "(?i)AccountKey["' =:]+[0-9a-zA-Z/+]{88}"
+regex = "(?i)AccountKey[" =:]+[0-9a-zA-Z/+]{88}"
 tags = ["Azure", "key"]
 
 [[rules]]
@@ -70,6 +74,7 @@ tags = ["GitHub", "token"]
 
 [[rules]]
 description = ".NET Machine Key"
+regex = "(?i)<machineKey.*validationKey=\"[0-9a-fA-F]{64,}\".*decryptionKey=\"[0-9a-fA-F]{64,}\".*\/?>"
 regex = "(?i)<machineKey.*validationKey=\"[0-9a-fA-F]{64,}\".*decryptionKey=\"[0-9a-fA-F]{64,}\".*\/?>"
 tags = [".NET", "key"]
 

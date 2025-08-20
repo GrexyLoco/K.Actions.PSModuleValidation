@@ -25,12 +25,12 @@ authors = [
 
 [[rules]]
 description = "Generic API Key"
-regex = "(?i)api[_-]?key[" =:]+[0-9a-zA-Z]{16,}"
+regex = "(?i)api[_-]?key[ =:]+[0-9a-zA-Z]{16,}"
 tags = ["key", "API"]
 
 [[rules]]
 description = "Generic Password"
-regex = "(?i)password[" =:]+[0-9a-zA-Z!@#$%^&*()_+\-=]{8,}"
+regex = "(?i)password[ =:]+[0-9a-zA-Z!@#$%^&*()_+\\-=]{8,}"
 tags = ["password"]
 
 [[rules]]
@@ -45,7 +45,7 @@ tags = ["AWS", "secret"]
 
 [[rules]]
 description = "Azure Storage Account Key"
-regex = "(?i)AccountKey[" =:]+[0-9a-zA-Z/+]{88}"
+regex = "(?i)AccountKey[ =:]+[0-9a-zA-Z/+]{88}"
 tags = ["Azure", "key"]
 
 [[rules]]

@@ -30,38 +30,39 @@ on:
         required: false
         default: false
         type: boolean
-      test-scope:
-        description: 'Scope of tests to run before release'
-        required: false
-        default: 'full'
-        type: choice
-        options:
-        - 'full'
-        - 'security-only'
-        - 'integration-only'
-        - 'cross-platform-only'
+
+env:
+  RELEASE_AUTHOR: "github-actions[bot]"
+  RELEASE_EMAIL: "github-actions[bot]@users.noreply.github.com"
 
 jobs:
-  # 🧪 First run ALL tests - Release ONLY if tests pass!
-  run-tests:
-    name: 🧪 Run Action Release Tests
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🔐 JOB 1: QUALITY GATE - Security, Structure & Code Quality
+  # ═══════════════════════════════════════════════════════════════════════════
+  quality-gate:
+    name: 🔐 Quality Gate
     uses: ./.github/workflows/release_action_test.yml
     with:
-      test-scope: ${{ inputs.test-scope || 'full' }}
+      test-scope: 'full'
     permissions:
-      contents: write  # Required for badge updates to README
-      actions: read    # Required to read workflow status
-      pull-requests: read  # Required for PR information
-    secrets: inherit  # Pass all secrets to the reusable workflow
-    
-  # 📦 Release job depends on successful tests
-  create-release:
-    name: 📦 Create Release
+      contents: write
+      actions: read
+      pull-requests: read
+    secrets: inherit
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 📦 JOB 2: PREPARE RELEASE - Version Detection & Changelog
+  # ═══════════════════════════════════════════════════════════════════════════
+  prepare-release:
+    name: 📦 Prepare Release
+    needs: quality-gate
     runs-on: ubuntu-latest
-    needs: run-tests
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (needs.run-tests.outputs.test-success == 'true' || github.event.inputs.force-release == 'true')
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && (needs.quality-gate.outputs.test-success == 'true' || github.event.inputs.force-release == 'true')
     outputs:
-      version: ${{ steps.version.outputs.newVersion }}
+      new-version: ${{ steps.version.outputs.newVersion }}
+      current-version: ${{ steps.version.outputs.currentVersion }}
+      bump-type: ${{ steps.version.outputs.bumpType }}
+      should-release: ${{ steps.release-check.outputs.skip-release != 'true' }}
       changelog: ${{ steps.changelog.outputs.changelog }}
     
     steps:
@@ -84,18 +85,18 @@ jobs:
           $bumpType = '${{ steps.version.outputs.bumpType }}'
           $forceRelease = '${{ github.event.inputs.force-release }}'
           
-          Write-Host "🔍 Release Analysis:" -ForegroundColor Cyan
-          Write-Host "  Current Version: ${{ steps.version.outputs.currentVersion }}" -ForegroundColor White
-          Write-Host "  New Version: ${{ steps.version.outputs.newVersion }}" -ForegroundColor White
-          Write-Host "  Bump Type: $bumpType" -ForegroundColor White
-          Write-Host "  Force Release: $forceRelease" -ForegroundColor White
+          Write-Output "🔍 Release Analysis:"
+          Write-Output "  Current Version: ${{ steps.version.outputs.currentVersion }}"
+          Write-Output "  New Version: ${{ steps.version.outputs.newVersion }}"
+          Write-Output "  Bump Type: $bumpType"
+          Write-Output "  Force Release: $forceRelease"
           
           if ($bumpType -eq 'none' -and $forceRelease -ne 'true') {
-            Write-Host "⏭️ No version changes detected - skipping release" -ForegroundColor Yellow
-            Write-Output "skip-release=true" >> $env:GITHUB_OUTPUT
+            Write-Output "⏭️ No version changes detected - skipping release"
+            "skip-release=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           } else {
-            Write-Host "✅ Release will be created" -ForegroundColor Green
-            Write-Output "skip-release=false" >> $env:GITHUB_OUTPUT
+            Write-Output "✅ Release will be created"
+            "skip-release=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
 
       - name: 📝 Generate Changelog
@@ -103,7 +104,7 @@ jobs:
         if: steps.release-check.outputs.skip-release != 'true'
         shell: pwsh
         run: |
-          Write-Host "📝 Generating changelog..." -ForegroundColor Cyan
+          Write-Output "📝 Generating changelog..."
           
           $version = '${{ steps.version.outputs.newVersion }}'
           $latestTag = git describe --tags --abbrev=0 2>$null
@@ -114,9 +115,9 @@ jobs:
               $commits = git log --pretty=format:"- %s" | Select-Object -First 10
           }
           
-          # Create simple changelog
+          # Create changelog
           $changelogLines = @()
-          $changelogLines += "## What''s Changed in $version"
+          $changelogLines += "## What's Changed in $version"
           $changelogLines += ""
           $changelogLines += "### 🚀 Features & Improvements"
           if ($commits) {
@@ -126,9 +127,9 @@ jobs:
           }
           $changelogLines += ""
           $changelogLines += "### 🛡️ Action Capabilities"
-          $changelogLines += "- **Security Scanning**: GitLeaks + Super-Linter"
-          $changelogLines += "- **PowerShell Testing**: Pester v5 with code coverage"
-          $changelogLines += "- **Enhanced Reporting**: Rich GitHub step summaries"
+          $changelogLines += "- **Security Scanning**: GitLeaks"
+          $changelogLines += "- **PowerShell Linting**: PSScriptAnalyzer"
+          $changelogLines += "- **Structure Validation**: action.yml schema checks"
           $changelogLines += "- **Enterprise Ready**: Fully parametrized for reuse"
           $changelogLines += ""
           $changelogLines += "### 📋 Usage"
@@ -144,22 +145,38 @@ jobs:
               $changelogLines += "**Full Changelog**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/compare/$latestTag...$version"
           }
           
-          # Join changelog lines
           $changelog = $changelogLines -join "`n"
           
-          # Write to GitHub output using separate commands to avoid quoting issues
           "changelog<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $changelog | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚀 JOB 3: GITHUB RELEASE - Tag, Release, Publish
+  # ═══════════════════════════════════════════════════════════════════════════
+  github-release:
+    name: 🚀 GitHub Release
+    needs: [quality-gate, prepare-release]
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.create-release.outputs.release-created }}
+      release-tag: ${{ steps.create-release.outputs.release-tag }}
+    
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: 🏷️ Create Release Tag
-        if: steps.release-check.outputs.skip-release != 'true'
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.newVersion }}'
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
           
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "${{ env.RELEASE_AUTHOR }}"
+          git config user.email "${{ env.RELEASE_EMAIL }}"
           
           git tag -a $version -m "🚀 Release $version
 
@@ -167,37 +184,68 @@ jobs:
           
           Features:
           - Comprehensive PowerShell module validation
-          - Security scanning with GitLeaks and Super-Linter  
-          - Pester v5 testing with code coverage
-          - Enhanced GitHub step summaries
+          - Security scanning with GitLeaks
+          - PSScriptAnalyzer linting
+          - Action structure validation
           - Enterprise-ready parametrization"
           
           git push origin $version
+          
+          Write-Output "✅ Tag created: $version"
 
       - name: 📦 Create GitHub Release
-        if: steps.release-check.outputs.skip-release != 'true'
+        id: create-release
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = '${{ steps.version.outputs.newVersion }}'
-          $changelog = '${{ steps.changelog.outputs.changelog }}'
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
+          $changelog = @'
+          ${{ needs.prepare-release.outputs.changelog }}
+          '@
           
-          # Create release using GitHub CLI
           gh release create $version --title "🚀 K.Actions.PSModuleValidation $version" --notes "$changelog"
+          
+          "release-created=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "release-tag=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          
+          Write-Output "✅ Release created: $version"
 
       - name: 📋 Generate Release Summary
-        if: always()
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.newVersion }}'
-          $currentVersion = '${{ steps.version.outputs.currentVersion }}'
-          $bumpType = '${{ steps.version.outputs.bumpType }}'
-          $skipRelease = '${{ steps.release-check.outputs.skip-release }}'
-          $testSuccess = '${{ needs.run-tests.outputs.test-success }}'
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
+          $testSuccess = '${{ needs.quality-gate.outputs.test-success }}'
           
-          if ($skipRelease -eq 'true') {
-            $summary = @"
+          $summary = @"
+          ## 🚀 Release Complete - $version
+          
+          ### 📊 Release Status
+          **Version:** $version
+          **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })
+          **Status:** ✅ RELEASED
+          
+          ### 🎯 Action Features
+          - 🔐 **Security Scanning** - GitLeaks
+          - 🎨 **Code Quality** - PSScriptAnalyzer
+          - 📋 **Structure Validation** - action.yml checks
+          - ⚙️ **Configurable** - Enterprise-ready parameters
+          
+          ### 📋 Usage Instructions
+          \`\`\`yaml
+          uses: GrexyLoco/K.Actions.PSModuleValidation@$version
+          \`\`\`
+          
+          ### 🔗 Links
+          - **Repository**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation
+          - **Release**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/releases/tag/$version
+          - **Documentation**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation#readme
+          
+          ---
+          **Action is ready for production use! 🎉**
+          "@
+          
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           ## ⏭️ No Release Required
           
           ### 📊 Analysis Results
@@ -250,15 +298,17 @@ jobs:
           }
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
-  # 🎖️ Update badges ONLY after successful release
-  update-success-badges:
-    name: 🎖️ Update Success Badges After Release
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🎖️ JOB 4: UPDATE BADGES (Optional, Action-specific)
+  # ═══════════════════════════════════════════════════════════════════════════
+  update-badges:
+    name: 🎖️ Update Success Badges
     runs-on: ubuntu-latest
-    needs: [run-tests, create-release]
-    if: success() && needs.create-release.result == 'success'
+    needs: [quality-gate, github-release]
+    if: success() && needs.github-release.outputs.release-created == 'true'
     permissions:
-      contents: write  # Required to push README changes
-      actions: read    # Required to read workflow status
+      contents: write
+      actions: read
       
     steps:
       - name: 📥 Checkout Repository
@@ -268,60 +318,49 @@ jobs:
           fetch-depth: 1
 
       - name: 🎖️ Generate Success Badges
-        id: create-success-badges
+        id: create-badges
         shell: pwsh
         run: |
-          Write-Host "🎖️ Generating success badges after successful release..." -ForegroundColor Green
+          Write-Output "🎖️ Generating success badges after successful release..."
           
-          # All tests passed if we reached this point
-          $overallStatus = 'passing'
-          $statusColor = 'green'
-          
-          # Generate success badges
           $testsBadge = "![Tests](https://img.shields.io/badge/Tests-passing-green)"
           $securityBadge = "![Security](https://img.shields.io/badge/Security-passing-green)"
-          $integrationBadge = "![Integration](https://img.shields.io/badge/Integration-passing-green)"
+          $lintingBadge = "![Linting](https://img.shields.io/badge/Linting-passing-green)"
           $crossPlatformBadge = "![Cross-Platform](https://img.shields.io/badge/Cross--Platform-passing-green)"
           
-          # Platform badges
           $ubuntuBadge = "![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04-compatible-green)"
           $windowsBadge = "![Windows](https://img.shields.io/badge/Windows_2022-compatible-green)"
           
-          # Store badge data
-          Write-Output "tests-badge=$testsBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "security-badge=$securityBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "integration-badge=$integrationBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "cross-platform-badge=$crossPlatformBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "ubuntu-badge=$ubuntuBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "windows-badge=$windowsBadge" >> $env:GITHUB_OUTPUT
-          Write-Output "overall-status=$overallStatus" >> $env:GITHUB_OUTPUT
+          "tests-badge=$testsBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "security-badge=$securityBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "linting-badge=$lintingBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "cross-platform-badge=$crossPlatformBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "ubuntu-badge=$ubuntuBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "windows-badge=$windowsBadge" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           
-          Write-Host "✅ Success badges generated!" -ForegroundColor Green
+          Write-Output "✅ Success badges generated!"
 
-      - name: 📝 Update README with Success Badges
+      - name: 📝 Update README with Badges
         id: update-readme
         shell: pwsh
         run: |
-          Write-Host "📝 Updating README.md with success badges..." -ForegroundColor Cyan
+          Write-Output "📝 Updating README.md with success badges..."
           
-          # Get badge data
-          $testsBadge = '${{ steps.create-success-badges.outputs.tests-badge }}'
-          $securityBadge = '${{ steps.create-success-badges.outputs.security-badge }}'
-          $integrationBadge = '${{ steps.create-success-badges.outputs.integration-badge }}'
-          $crossPlatformBadge = '${{ steps.create-success-badges.outputs.cross-platform-badge }}'
-          $ubuntuBadge = '${{ steps.create-success-badges.outputs.ubuntu-badge }}'
-          $windowsBadge = '${{ steps.create-success-badges.outputs.windows-badge }}'
+          $testsBadge = '${{ steps.create-badges.outputs.tests-badge }}'
+          $securityBadge = '${{ steps.create-badges.outputs.security-badge }}'
+          $lintingBadge = '${{ steps.create-badges.outputs.linting-badge }}'
+          $crossPlatformBadge = '${{ steps.create-badges.outputs.cross-platform-badge }}'
+          $ubuntuBadge = '${{ steps.create-badges.outputs.ubuntu-badge }}'
+          $windowsBadge = '${{ steps.create-badges.outputs.windows-badge }}'
           
           $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss UTC'
-          $runNumber = '${{ github.run_number }}'
-          $version = '${{ needs.create-release.outputs.version }}'
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
           
-          # Create success badge section
           $badgeSection = @"
           <!-- AUTO-GENERATED TEST BADGES - DO NOT EDIT MANUALLY -->
           ## 🧪 Current Test Status
           
-          $testsBadge $securityBadge $integrationBadge $crossPlatformBadge
+          $testsBadge $securityBadge $lintingBadge $crossPlatformBadge
           
           ### Platform Compatibility
           $ubuntuBadge $windowsBadge
@@ -332,6 +371,12 @@ jobs:
           
           # Read and update README
           $readmePath = './README.md'
+          
+          if (-not (Test-Path $readmePath)) {
+              Write-Output "⚠️ README.md not found - skipping badge update"
+              exit 0
+          }
+          
           $readmeContent = Get-Content $readmePath -Raw
           
           # Replace badge section
@@ -340,34 +385,33 @@ jobs:
           
           if ($readmeContent -match "(?s)$([regex]::Escape($badgeStartPattern)).*?$([regex]::Escape($badgeEndPattern))") {
               $updatedContent = $readmeContent -replace "(?s)$([regex]::Escape($badgeStartPattern)).*?$([regex]::Escape($badgeEndPattern))", $badgeSection
-              Write-Host "✅ Updated existing badge section" -ForegroundColor Green
+              Write-Output "✅ Updated existing badge section"
           } else {
               # Add new section after license badge
               if ($readmeContent -match '(\[!\[License\].*?\]\(LICENSE\))(\r?\n)') {
                   $insertionPoint = $matches[0]
                   $updatedContent = $readmeContent -replace [regex]::Escape($insertionPoint), "$insertionPoint`n`n$badgeSection`n"
-                  Write-Host "✅ Added new badge section" -ForegroundColor Green
+                  Write-Output "✅ Added new badge section"
               } else {
-                  Write-Host "⚠️ Could not find insertion point for badges" -ForegroundColor Yellow
-                  exit 1
+                  Write-Output "⚠️ Could not find insertion point for badges - skipping"
+                  exit 0
               }
           }
           
-          # Write updated content
           $updatedContent | Out-File $readmePath -Encoding UTF8 -NoNewline
-          Write-Output "badges-updated=true" >> $env:GITHUB_OUTPUT
+          "badges-updated=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      - name: 💾 Commit Success Badge Updates
+      - name: 💾 Commit Badge Updates
         if: steps.update-readme.outputs.badges-updated == 'true'
         shell: pwsh
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "${{ env.RELEASE_EMAIL }}"
+          git config --local user.name "${{ env.RELEASE_AUTHOR }}"
           
           git add README.md
-          $version = '${{ needs.create-release.outputs.version }}'
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
           
-          git commit -m "🎖️ Update badges after successful release $version
+          git commit -m "🎖️ Update badges after release $version
 
           All tests passed and release $version was successfully created!
           
@@ -375,4 +419,4 @@ jobs:
           
           git push
           
-          Write-Host "✅ Success badges updated and committed!" -ForegroundColor Green
+          Write-Output "✅ Badges updated and committed!"

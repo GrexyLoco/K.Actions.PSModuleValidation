@@ -73,11 +73,11 @@ function Get-PowerShellScripts {
         [string[]]$Exclude
     )
     
-    $scripts = Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File
+    $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
     
     # Filter out excluded paths
-    if ($Exclude) {
-        $scripts = $scripts | Where-Object {
+    if ($Exclude -and $scripts.Count -gt 0) {
+        $scripts = @($scripts | Where-Object {
             $scriptPath = $_.FullName
             $shouldInclude = $true
             
@@ -89,7 +89,7 @@ function Get-PowerShellScripts {
             }
             
             $shouldInclude
-        }
+        })
     }
     
     return $scripts

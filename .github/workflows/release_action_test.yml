@@ -24,10 +24,10 @@ on:
     outputs:
       test-success:
         description: 'Whether all tests passed'
-        value: ${{ jobs.security-scan.outputs.security-success == 'true' && jobs.integration-test.outputs.integration-success == 'true' && jobs.cross-platform-test.outputs.cross-platform-success == 'true' }}
+        value: ${{ jobs.quality-gate.outputs.quality-success == 'true' && jobs.integration-test.outputs.integration-success == 'true' && jobs.cross-platform-test.outputs.cross-platform-success == 'true' }}
       security-success:
         description: 'Whether security scans passed'
-        value: ${{ jobs.security-scan.outputs.security-success }}
+        value: ${{ jobs.quality-gate.outputs.quality-success }}
       integration-success:
         description: 'Whether integration tests passed'
         value: ${{ jobs.integration-test.outputs.integration-success }}
@@ -36,198 +36,86 @@ on:
         value: ${{ jobs.cross-platform-test.outputs.cross-platform-success }}
 
 jobs:
-  security-scan:
-    name: 🛡️ Security & Structure Validation
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🔐 JOB 1: QUALITY GATE - Security, Structure & Code Quality
+  # ═══════════════════════════════════════════════════════════════════════════
+  quality-gate:
+    name: 🔐 Quality Gate
     runs-on: ubuntu-latest
     if: inputs.test-scope == 'full' || inputs.test-scope == 'security-only'
     outputs:
-      security-success: ${{ steps.evaluate-security.outputs.security-success }}
+      quality-success: ${{ steps.evaluate-quality.outputs.quality-success }}
+      action-name: ${{ steps.validate-structure.outputs.action-name }}
+      action-type: ${{ steps.validate-structure.outputs.action-type }}
     
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🛡️ GitLeaks Security Scan
+      # ─────────────────────────────────────────────────────────────────────
+      # 🔐 Security Scanning
+      # ─────────────────────────────────────────────────────────────────────
+      - name: 🔐 GitLeaks Security Scan
         uses: zricethezav/gitleaks-action@v2.3.9
         continue-on-error: true
         id: gitleaks
-        
-      - name: 📋 Action Structure Validation
-        id: structure-check
-        shell: pwsh
-        run: |
-          Write-Host "🔍 Validating GitHub Action structure..." -ForegroundColor Cyan
-          
-          # Dynamic action detection
-          $actionName = (Get-Content './action.yml' -Raw | Select-String -Pattern 'name:\s*[''"]?([^''"]+)[''"]?' | ForEach-Object { $_.Matches[0].Groups[1].Value }).Trim()
-          Write-Host "📦 Detected Action: $actionName" -ForegroundColor Green
-          
-          # Validate action.yml structure
-          $actionContent = Get-Content './action.yml' -Raw
-          $requiredSections = @('name:', 'description:', 'inputs:', 'outputs:', 'runs:')
-          $sectionsFound = 0
-          $issues = @()
-          
-          foreach ($section in $requiredSections) {
-              if ($actionContent -match $section) {
-                  Write-Host "✅ Found section: $section" -ForegroundColor Green
-                  $sectionsFound++
-              } else {
-                  Write-Host "❌ Missing section: $section" -ForegroundColor Red
-                  $issues += "Missing required section: $section"
-              }
-          }
-          
-          # Check for common action patterns
-          $hasCompositeAction = $actionContent -match 'using:\s*[''"]?composite[''"]?'
-          $hasJavaScriptAction = $actionContent -match 'using:\s*[''"]?node\d+[''"]?'
-          $hasDockerAction = $actionContent -match 'using:\s*[''"]?docker[''"]?'
-          
-          $actionType = if ($hasCompositeAction) { 'Composite' } elseif ($hasJavaScriptAction) { 'JavaScript' } elseif ($hasDockerAction) { 'Docker' } else { 'Unknown' }
-          Write-Host "🎯 Action Type: $actionType" -ForegroundColor Cyan
-          
-          # YAML syntax validation
-          try {
-              if (Get-Command 'yq' -ErrorAction SilentlyContinue) {
-                  $yamlCheck = & yq eval '.' './action.yml' 2>&1
-                  if ($LASTEXITCODE -eq 0) {
-                      Write-Host "✅ YAML syntax is valid" -ForegroundColor Green
-                  } else {
-                      Write-Host "❌ YAML syntax error: $yamlCheck" -ForegroundColor Red
-                      $issues += "YAML syntax error"
-                  }
-              } else {
-                  Write-Host "⚠️ yq not available, skipping YAML validation" -ForegroundColor Yellow
-              }
-          } catch {
-              Write-Host "⚠️ YAML validation skipped: $($_.Exception.Message)" -ForegroundColor Yellow
-          }
-          
-          $structureSuccess = $sectionsFound -eq $requiredSections.Count -and $issues.Count -eq 0
-          
-          Write-Output "structure-success=$structureSuccess" >> $env:GITHUB_OUTPUT
-          Write-Output "action-name=$actionName" >> $env:GITHUB_OUTPUT
-          Write-Output "action-type=$actionType" >> $env:GITHUB_OUTPUT
-          Write-Output "sections-found=$sectionsFound" >> $env:GITHUB_OUTPUT
-          Write-Output "issues-count=$($issues.Count)" >> $env:GITHUB_OUTPUT
 
-      - name: 📋 Input/Output Schema Validation
-        id: schema-validation
+      # ─────────────────────────────────────────────────────────────────────
+      # 📋 Action Definition Validation
+      # ─────────────────────────────────────────────────────────────────────
+      - name: 📋 Validate Action Structure & Schema
+        id: validate-structure
         shell: pwsh
-        run: |
-          Write-Host "📋 Validating Input/Output Schema..." -ForegroundColor Cyan
-          
-          $actionContent = Get-Content './action.yml' -Raw
-          $schemaIssues = @()
-          
-          # Extract and validate inputs
-          $inputSection = ($actionContent -split 'inputs:')[1] -split 'outputs:' | Select-Object -First 1
-          $inputsValid = 0
-          $inputsTotal = 0
-          
-          if ($inputSection) {
-              $inputMatches = [regex]::Matches($inputSection, '^\s+([a-zA-Z0-9-]+):\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-              $inputsTotal = $inputMatches.Count
-              
-              foreach ($match in $inputMatches) {
-                  $inputName = $match.Groups[1].Value
-                  $inputBlock = ($inputSection -split "${inputName}:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
-                  
-                  # Check required fields
-                  $hasDescription = $inputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'
-                  $hasRequired = $inputBlock -match 'required:\s*(true|false)'
-                  $hasDefault = $inputBlock -match 'default:\s*'
-                  $hasType = $inputBlock -match 'type:\s*(string|boolean|choice)'
-                  
-                  if ($hasDescription -and $hasRequired) {
-                      Write-Host "✅ Input '$inputName': Valid schema" -ForegroundColor Green
-                      $inputsValid++
-                  } else {
-                      Write-Host "❌ Input '$inputName': Missing description or required field" -ForegroundColor Red
-                      $schemaIssues += "Input '$inputName' missing required schema fields"
-                  }
-                  
-                  # Check for choice type validation
-                  if ($hasType -and $inputBlock -match 'type:\s*choice' -and $inputBlock -notmatch 'options:') {
-                      Write-Host "⚠️ Input '$inputName': Choice type without options" -ForegroundColor Yellow
-                      $schemaIssues += "Input '$inputName' is choice type but missing options"
-                  }
-              }
-          }
-          
-          # Extract and validate outputs
-          $outputSection = ($actionContent -split 'outputs:')[1] -split 'runs:' | Select-Object -First 1
-          $outputsValid = 0
-          $outputsTotal = 0
-          
-          if ($outputSection) {
-              $outputMatches = [regex]::Matches($outputSection, '^\s+([a-zA-Z0-9-]+):\s*$', [System.Text.RegularExpressions.RegexOptions]::Multiline)
-              $outputsTotal = $outputMatches.Count
-              
-              foreach ($match in $outputMatches) {
-                  $outputName = $match.Groups[1].Value
-                  $outputBlock = ($outputSection -split "${outputName}:")[1] -split '^\s+[a-zA-Z0-9-]+:\s*$' | Select-Object -First 1
-                  
-                  # Check required fields
-                  $hasDescription = $outputBlock -match 'description:\s*[''"]?[^''"]*[''"]?'
-                  $hasValue = $outputBlock -match 'value:\s*'
-                  
-                  if ($hasDescription -and $hasValue) {
-                      Write-Host "✅ Output '$outputName': Valid schema" -ForegroundColor Green
-                      $outputsValid++
-                  } else {
-                      Write-Host "❌ Output '$outputName': Missing description or value" -ForegroundColor Red
-                      $schemaIssues += "Output '$outputName' missing required schema fields"
-                  }
-              }
-          }
-          
-          $schemaSuccess = $schemaIssues.Count -eq 0 -and $inputsTotal -gt 0 -and $outputsTotal -gt 0
-          
-          Write-Host "📊 Schema validation results:" -ForegroundColor Cyan
-          Write-Host "   📥 Inputs: $inputsValid/$inputsTotal valid" -ForegroundColor Gray
-          Write-Host "   📤 Outputs: $outputsValid/$outputsTotal valid" -ForegroundColor Gray
-          Write-Host "   ❌ Issues: $($schemaIssues.Count)" -ForegroundColor Gray
-          
-          Write-Output "schema-success=$schemaSuccess" >> $env:GITHUB_OUTPUT
-          Write-Output "inputs-valid=$inputsValid" >> $env:GITHUB_OUTPUT
-          Write-Output "inputs-total=$inputsTotal" >> $env:GITHUB_OUTPUT
-          Write-Output "outputs-valid=$outputsValid" >> $env:GITHUB_OUTPUT
-          Write-Output "outputs-total=$outputsTotal" >> $env:GITHUB_OUTPUT
-          Write-Output "schema-issues=$($schemaIssues.Count)" >> $env:GITHUB_OUTPUT
+        run: ./.github/scripts/Test-ActionStructure.ps1
 
-      - name: 📊 Evaluate Security Results
-        id: evaluate-security
+      # ─────────────────────────────────────────────────────────────────────
+      # 🎨 PowerShell Script Linting (Action-specific only)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: 🎨 Lint PowerShell Scripts
+        id: lint-scripts
+        shell: pwsh
+        run: ./.github/scripts/Invoke-ScriptAnalyzer.ps1
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 📊 Evaluate Overall Quality Gate
+      # ─────────────────────────────────────────────────────────────────────
+      - name: 📊 Evaluate Quality Results
+        id: evaluate-quality
         shell: pwsh
         run: |
           $gitleaksOutcome = '${{ steps.gitleaks.outcome }}'
-          $structureSuccess = '${{ steps.structure-check.outputs.structure-success }}'
-          $schemaSuccess = '${{ steps.schema-validation.outputs.schema-success }}'
-          $actionName = '${{ steps.structure-check.outputs.action-name }}'
-          $actionType = '${{ steps.structure-check.outputs.action-type }}'
+          $structureSuccess = '${{ steps.validate-structure.outputs.structure-success }}'
+          $schemaSuccess = '${{ steps.validate-structure.outputs.schema-success }}'
+          $lintSuccess = '${{ steps.lint-scripts.outputs.analysis-success }}'
+          $actionName = '${{ steps.validate-structure.outputs.action-name }}'
+          $actionType = '${{ steps.validate-structure.outputs.action-type }}'
           
-          Write-Host "🔍 Security evaluation for: $actionName ($actionType)" -ForegroundColor Cyan
-          Write-Host "  🛡️ GitLeaks: $gitleaksOutcome" -ForegroundColor Gray
-          Write-Host "  📋 Structure: $structureSuccess" -ForegroundColor Gray
-          Write-Host "  📋 Schema: $schemaSuccess" -ForegroundColor Gray
+          Write-Output "🔍 Quality Gate evaluation for: $actionName ($actionType)"
+          Write-Output "  🔐 GitLeaks: $gitleaksOutcome"
+          Write-Output "  📋 Structure: $structureSuccess"
+          Write-Output "  📋 Schema: $schemaSuccess"
+          Write-Output "  🎨 Linting: $lintSuccess"
           
-          # Security success: GitLeaks should not fail AND structure AND schema should be valid
-          $securitySuccess = ($gitleaksOutcome -ne 'failure') -and ($structureSuccess -eq 'true') -and ($schemaSuccess -eq 'true')
+          # Quality success: All checks must pass
+          $qualitySuccess = ($gitleaksOutcome -ne 'failure') -and `
+                           ($structureSuccess -eq 'True') -and `
+                           ($schemaSuccess -eq 'True') -and `
+                           ($lintSuccess -eq 'True')
           
-          Write-Output "security-success=$securitySuccess" >> $env:GITHUB_OUTPUT
+          "quality-success=$qualitySuccess" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           
-          if ($securitySuccess) {
-              Write-Host "✅ Security validation passed!" -ForegroundColor Green
+          if ($qualitySuccess) {
+              Write-Output "✅ Quality Gate passed!"
           } else {
-              Write-Host "❌ Security validation failed!" -ForegroundColor Red
+              Write-Output "❌ Quality Gate failed!"
               exit 1
           }
 
   cross-platform-test:
     name: 🖥️ Cross-Platform Compatibility
     runs-on: ${{ matrix.os }}
-    needs: security-scan
-    if: always() && (inputs.test-scope == 'full' || inputs.test-scope == 'cross-platform-only') && (needs.security-scan.result == 'success' || inputs.test-scope == 'cross-platform-only')
+    needs: quality-gate
+    if: always() && (inputs.test-scope == 'full' || inputs.test-scope == 'cross-platform-only') && (needs.quality-gate.result == 'success' || inputs.test-scope == 'cross-platform-only')
     outputs:
       cross-platform-success: ${{ steps.platform-test.outputs.success }}
     strategy:

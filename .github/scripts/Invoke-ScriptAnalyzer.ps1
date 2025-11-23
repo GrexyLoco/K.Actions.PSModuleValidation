@@ -124,14 +124,14 @@ try {
     foreach ($script in $scripts) {
         Write-Information "🔍 Analyzing: $($script.Name)"
         
-        $results = Invoke-ScriptAnalyzer -Path $script.FullName -Recurse
+        $results = @(Invoke-ScriptAnalyzer -Path $script.FullName -Recurse)
         
-        if ($results) {
+        if ($results.Count -gt 0) {
             $allResults += $results
             
-            $errors = ($results | Where-Object Severity -eq 'Error').Count
-            $warnings = ($results | Where-Object Severity -eq 'Warning').Count
-            $info = ($results | Where-Object Severity -eq 'Information').Count
+            $errors = @($results | Where-Object Severity -eq 'Error').Count
+            $warnings = @($results | Where-Object Severity -eq 'Warning').Count
+            $info = @($results | Where-Object Severity -eq 'Information').Count
             
             $totalErrors += $errors
             $totalWarnings += $warnings

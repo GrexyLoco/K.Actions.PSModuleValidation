@@ -63,7 +63,7 @@ jobs:
       - name: 🎨 Lint PowerShell Scripts
         id: lint
         shell: pwsh
-        run: ./.github/scripts/Invoke-ScriptAnalyzer.ps1 -RootPath
+        run: ./.github/scripts/Invoke-ScriptAnalyzer.ps1
 
       - name: 📊 Evaluate Quality Gate
         id: evaluate

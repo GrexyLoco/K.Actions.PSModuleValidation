@@ -191,6 +191,7 @@ try {
     
 } catch {
     Write-Error "Script analysis failed: $_"
+    Write-Debug "Stack Trace: $($_.ScriptStackTrace)"
 
     throw
 }

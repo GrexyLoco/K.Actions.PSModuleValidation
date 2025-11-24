@@ -70,7 +70,7 @@ function Get-PowerShellScripts {
         [string]$RootPath,
         
         [Parameter()]
-        [string[]]$Exclude
+        [string[]]$ExcludePath = @()
     )
     
     $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
@@ -109,7 +109,7 @@ try {
     # Get scripts to analyze
     $scripts = Get-PowerShellScripts -RootPath $Path -Exclude $ExcludePath
     
-    if ($scripts.Count -eq 0) {
+    if (null -eq $scripts -and $scripts.Count -eq 0) {
         Write-Information "⚠️ No PowerShell scripts found to analyze"
         exit 0
     }

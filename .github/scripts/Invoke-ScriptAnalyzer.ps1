@@ -73,13 +73,48 @@ function Get-PowerShellScripts {
         [string[]]$ExcludePath = @()
     )
     
-    $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
-    Write-Information "📂 Scanning for PowerShell scripts in: $RootPath"
-    Write-Information "Found $($scripts.Count) PowerShell script(s) before exclusion"
-    Write-Information "Found $($ExcludePath.Count) exclusion pattern(s)"
+    Write-Information "📂 Scanning for PowerShell scripts..."
+    Write-Information "   Root path: $RootPath"
+    
+    # Convention-based paths to check (in order of priority)
+    $conventionPaths = @(
+        '.github/scripts',  # GitHub Actions convention
+        'scripts',          # Generic scripts folder
+        'src',              # Source folder
+        '.'                 # Current directory (fallback)
+    )
+    
+    $scripts = @()
+    
+    # Try convention paths first
+    foreach ($conventionPath in $conventionPaths) {
+        $fullPath = Join-Path $RootPath $conventionPath
+        
+        if (Test-Path $fullPath) {
+            $foundScripts = @(Get-ChildItem -Path $fullPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
+            
+            if ($foundScripts.Count -gt 0) {
+                Write-Information "   ✅ Found $($foundScripts.Count) script(s) in: $conventionPath"
+                $scripts += $foundScripts
+                break  # Use first convention path that has scripts
+            }
+        }
+    }
+    
+    # If no scripts found in convention paths, try recursive from root
+    if ($scripts.Count -eq 0) {
+        Write-Information "   🔍 No scripts in convention paths, searching recursively..."
+        $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
+    }
+    
+    Write-Information "   📊 Total scripts found: $($scripts.Count)"
+    
+    if ($ExcludePath.Count -gt 0) {
+        Write-Information "   🚫 Applying $($ExcludePath.Count) exclusion pattern(s)..."
+    }
 
     # Filter out excluded paths
-    if ($ExcludePath -and $ExcludePath.Count -gt 0 -and $scripts -and $scripts.Count -gt 0) {
+    if ($ExcludePath.Count -gt 0 -and $scripts.Count -gt 0) {
         $scripts = @($scripts | Where-Object {
             $scriptPath = $_.FullName
             $shouldInclude = $true
@@ -87,12 +122,15 @@ function Get-PowerShellScripts {
             foreach ($excludePattern in $ExcludePath) {
                 if ($scriptPath -like "*$excludePattern*") {
                     $shouldInclude = $false
+                    Write-Information "   🚫 Excluded: $($_.Name) (matches: $excludePattern)"
                     break
                 }
             }
             
             $shouldInclude
         })
+        
+        Write-Information "   ✅ Scripts after exclusion: $($scripts.Count)"
     }
     
     return $scripts

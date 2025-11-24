@@ -121,6 +121,31 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/Generate-Changelog.ps1 -Version '${{ steps.determine-version.outputs.final-version }}'
 
+      - name: 📋 Create Release Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $shouldRelease = '${{ steps.determine-version.outputs.should-release }}'
+          $version = '${{ steps.determine-version.outputs.final-version }}'
+          $bumpType = '${{ steps.determine-version.outputs.bump-type }}'
+          
+          $summary = "## 📦 Prepare Release`n`n"
+          
+          if ($shouldRelease -eq 'true') {
+              $summary += "### ✅ Release Ready`n`n"
+              $summary += "| Detail | Value |`n"
+              $summary += "|--------|-------|`n"
+              $summary += "| **Version** | ``$version`` |`n"
+              $summary += "| **Bump Type** | ``$bumpType`` |`n"
+              $summary += "| **Status** | Ready for GitHub Release |`n"
+          } else {
+              $summary += "### ℹ️ No Release Required`n`n"
+              $summary += "No semantic version changes detected since last tag.`n"
+              $summary += "Use manual workflow dispatch with force-release to create a release anyway.`n"
+          }
+          
+          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
   # ═══════════════════════════════════════════════════════════════════════════
   # 🚀 JOB 3: GITHUB RELEASE - Tag, Release, Publish
   # ═══════════════════════════════════════════════════════════════════════════
@@ -164,86 +189,4 @@ jobs:
 
       - name: 📋 Generate Release Summary
         shell: pwsh
-        run: |
-          $version = '${{ needs.prepare-release.outputs.new-version }}'
-          
-          $summary = @"
-          ## 🚀 Release Complete - $version
-          
-          ### 📊 Release Status
-          **Version:** $version
-          **Quality Gate:** ✅ PASSED
-          **Status:** ✅ RELEASED
-          
-          ### 🎯 Action Features
-          - 🔐 **Security Scanning** - GitLeaks
-          - 🎨 **Code Quality** - PSScriptAnalyzer
-          - 📋 **Structure Validation** - action.yml checks
-          - ⚙️ **Configurable** - Enterprise-ready parameters
-          
-          ### 📋 Usage Instructions
-          \`\`\`yaml
-          uses: GrexyLoco/K.Actions.PSModuleValidation@$version
-          \`\`\`
-          
-          ### 🔗 Links
-          - **Repository**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation
-          - **Release**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/releases/tag/$version
-          - **Documentation**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation#readme
-          
-          ---
-          **Action is ready for production use! 🎉**
-          "@
-          
-          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
-          ## ⏭️ No Release Required
-          
-          ### 📊 Analysis Results
-          **Current Version:** $currentVersion
-          **Bump Type:** $bumpType
-          **Status:** ✅ NO CHANGES DETECTED
-          
-          ### 🔍 Why No Release?
-          .No semantic version changes since last tag
-          .Use manual trigger with force-release to override
-          
-          ### 🧪 Test Results
-          **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })
-          
-          ### 📋 Next Steps
-          - Make commits with conventional format (\`feat:\`, \`fix:\`, \`BREAKING CHANGE:\`)
-          - Or use manual workflow dispatch with force-release option
-          
-          ---
-          **Repository is up-to-date! 🎉**
-          "@
-          } else {
-            $summary = @"
-          ## 🚀 Release Complete - $version
-          
-          ### 📊 Release Status
-          **Version:** $version
-          **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })
-          **Status:** $(if ($testSuccess -eq 'true') { '✅ RELEASED' } else { '❌ BLOCKED' })
-          
-          ### 🎯 Action Features
-          - 🛡️ **Security Scanning** - GitLeaks & Super-Linter
-          - 🧪 **PowerShell Testing** - Pester v5 with coverage
-          - 📊 **Rich Reporting** - Enhanced GitHub summaries
-          - ⚙️ **Configurable** - Enterprise-ready parameters
-          
-          ### 📋 Usage Instructions
-          \`\`\`yaml
-          uses: GrexyLoco/K.Actions.PSModuleValidation@$version
-          \`\`\`
-          
-          ### 🔗 Links
-          - **Repository**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation
-          - **Release**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation/releases/tag/$version
-          - **Documentation**: https://github.com/GrexyLoco/K.Actions.PSModuleValidation#readme
-          
-          ---
-          **Action is ready for production use across all PowerShell modules! 🎉**
-          "@
-          }
-          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+        run: ./.github/scripts/New-ReleaseSummary.ps1 -Version '${{ needs.prepare-release.outputs.new-version }}'

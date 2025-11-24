@@ -74,6 +74,7 @@ function Get-PowerShellScripts {
     )
     
     $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
+    Write-Information "📂 Scanning for PowerShell scripts in: $RootPath"
     Write-Information "Found $($scripts.Count) PowerShell script(s) before exclusion"
     Write-Information "Found $($Exclude.Count) exclusion pattern(s)"
 

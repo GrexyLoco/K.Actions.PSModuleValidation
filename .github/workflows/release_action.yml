@@ -69,27 +69,16 @@ jobs:
         id: evaluate
         shell: pwsh
         run: |
-          $gitleaks = '${{ steps.gitleaks.outcome }}'
-          $structure = '${{ steps.validate-structure.outputs.structure-success }}'
-          $schema = '${{ steps.validate-structure.outputs.schema-success }}'
-          $lint = '${{ steps.lint.outputs.analysis-success }}'
-          
-          Write-Output "🔍 Quality Gate Results:"
-          Write-Output "  🔐 GitLeaks: $gitleaks"
-          Write-Output "  📋 Structure: $structure"
-          Write-Output "  📋 Schema: $schema"
-          Write-Output "  🎨 Linting: $lint"
-          
-          $success = ($gitleaks -ne 'failure') -and ($structure -eq 'True') -and ($schema -eq 'True') -and ($lint -eq 'True')
-          
-          "quality-success=$success" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          
-          if ($success) {
-              Write-Output "✅ Quality Gate passed!"
-          } else {
-              Write-Output "❌ Quality Gate failed!"
-              exit 1
-          }
+          ./.github/scripts/Invoke-QualityGateEvaluation.ps1 `
+            -GitLeaksOutcome '${{ steps.gitleaks.outcome }}' `
+            -StructureSuccess '${{ steps.validate-structure.outputs.structure-success }}' `
+            -SchemaSuccess '${{ steps.validate-structure.outputs.schema-success }}' `
+            -LintSuccess '${{ steps.lint.outputs.analysis-success }}' `
+            -ActionName '${{ steps.validate-structure.outputs.action-name }}' `
+            -ActionType '${{ steps.validate-structure.outputs.action-type }}' `
+            -ScriptsAnalyzed '${{ steps.lint.outputs.scripts-analyzed }}' `
+            -TotalErrors '${{ steps.lint.outputs.total-errors }}' `
+            -TotalWarnings '${{ steps.lint.outputs.total-warnings }}'
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 📦 JOB 2: PREPARE RELEASE - Version Detection & Changelog

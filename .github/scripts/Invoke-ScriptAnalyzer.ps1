@@ -79,7 +79,7 @@ function Get-PowerShellScripts {
     Write-Information "Found $($Exclude.Count) exclusion pattern(s)"
 
     # Filter out excluded paths
-    if ($Exclude.Count -gt 0 -and $scripts.Count -gt 0) {
+    if ($Exclude -and $Exclude.Count -gt 0 -and $scripts -and $scripts.Count -gt 0) {
         $scripts = @($scripts | Where-Object {
             $scriptPath = $_.FullName
             $shouldInclude = $true

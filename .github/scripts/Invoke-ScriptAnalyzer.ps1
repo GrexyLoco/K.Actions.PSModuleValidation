@@ -76,15 +76,15 @@ function Get-PowerShellScripts {
     $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
     Write-Information "📂 Scanning for PowerShell scripts in: $RootPath"
     Write-Information "Found $($scripts.Count) PowerShell script(s) before exclusion"
-    Write-Information "Found $($Exclude.Count) exclusion pattern(s)"
+    Write-Information "Found $($ExcludePath.Count) exclusion pattern(s)"
 
     # Filter out excluded paths
-    if ($Exclude -and $Exclude.Count -gt 0 -and $scripts -and $scripts.Count -gt 0) {
+    if ($ExcludePath -and $ExcludePath.Count -gt 0 -and $scripts -and $scripts.Count -gt 0) {
         $scripts = @($scripts | Where-Object {
             $scriptPath = $_.FullName
             $shouldInclude = $true
             
-            foreach ($excludePattern in $Exclude) {
+            foreach ($excludePattern in $ExcludePath) {
                 if ($scriptPath -like "*$excludePattern*") {
                     $shouldInclude = $false
                     break
@@ -190,7 +190,7 @@ try {
     exit 0
     
 } catch {
-    Write-Error "Script analysis failed: $_"
+    Write-Error "Script analysis failed:: $_"
     Write-Information "Stack Trace: $($_.ScriptStackTrace)"
     Write-Information "Invocation Info: $($_.InvocationInfo)"
     Write-Information "Exception Message: $($_.Exception.Message)"

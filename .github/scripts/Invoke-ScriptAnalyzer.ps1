@@ -129,9 +129,9 @@ try {
         if ($results.Count -gt 0) {
             $allResults += $results
             
-            $errors = @($results | Where-Object Severity -eq 'Error').Count
-            $warnings = @($results | Where-Object Severity -eq 'Warning').Count
-            $info = @($results | Where-Object Severity -eq 'Information').Count
+            $errors = @($results | Where-Object { $_.Severity -eq 'Error' }).Count
+            $warnings = @($results | Where-Object { $_.Severity -eq 'Warning' }).Count
+            $info = @($results | Where-Object { $_.Severity -eq 'Information' }).Count
             
             $totalErrors += $errors
             $totalWarnings += $warnings
@@ -142,7 +142,7 @@ try {
             Write-Information "   ℹ️ Info: $info"
             
             # Display errors and warnings
-            $results | Where-Object Severity -in @('Error', 'Warning') | ForEach-Object {
+            @($results | Where-Object { $_.Severity -in @('Error', 'Warning') }) | ForEach-Object {
                 $icon = if ($_.Severity -eq 'Error') { '❌' } else { '⚠️' }
                 Write-Information "   $icon Line $($_.Line): $($_.RuleName) - $($_.Message)"
             }

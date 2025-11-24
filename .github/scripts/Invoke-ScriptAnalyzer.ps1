@@ -116,6 +116,16 @@ try {
     
     if ($scripts.Count -eq 0) {
         Write-Information "⚠️ No PowerShell scripts found to analyze"
+        
+        # Write outputs even when no scripts found
+        if ($env:GITHUB_OUTPUT) {
+            "scripts-analyzed=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "total-errors=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "total-warnings=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "total-info=0" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "analysis-success=True" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        }
+        
         exit 0
     }
     

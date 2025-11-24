@@ -204,8 +204,8 @@ jobs:
           **Status:** ✅ NO CHANGES DETECTED
           
           ### 🔍 Why No Release?
-          - No semantic version changes since last tag
-          - Use manual trigger with force-release to override
+          .No semantic version changes since last tag
+          .Use manual trigger with force-release to override
           
           ### 🧪 Test Results
           **Tests:** $(if ($testSuccess -eq 'true') { '✅ PASSED' } else { '❌ FAILED' })

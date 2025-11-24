@@ -109,7 +109,12 @@ try {
     # Get scripts to analyze
     $scripts = Get-PowerShellScripts -RootPath $Path -Exclude $ExcludePath
     
-    if (null -eq $scripts -and $scripts.Count -eq 0) {
+    # Ensure we have an array (even if empty)
+    if ($null -eq $scripts) {
+        $scripts = @()
+    }
+    
+    if ($scripts.Count -eq 0) {
         Write-Information "⚠️ No PowerShell scripts found to analyze"
         exit 0
     }
@@ -190,13 +195,18 @@ try {
     exit 0
     
 } catch {
-    Write-Error "Script analysis failed:: $_"
-    Write-Information "Stack Trace: $($_.ScriptStackTrace)"
-    Write-Information "Invocation Info: $($_.InvocationInfo)"
-    Write-Information "Exception Message: $($_.Exception.Message)"
-    Write-Information "Exception Type: $($_.Exception.GetType().FullName)"
-    Write-Information "Exception Stack Trace: $($_.Exception.StackTrace)"
-    Write-Information "Exception Source: $($_.Exception.Source)"
-
-    throw
+    # Log detailed error information first (before Write-Error stops execution)
+    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Information "❌ ERROR DETAILS:"
+    Write-Information "Message: $_"
+    Write-Information "Exception: $($_.Exception.Message)"
+    Write-Information "Type: $($_.Exception.GetType().FullName)"
+    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    Write-Information "📍 STACK TRACE:"
+    Write-Information $_.ScriptStackTrace
+    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Now throw the error
+    Write-Error "Script analysis failed: $_"
+    exit 1
 }

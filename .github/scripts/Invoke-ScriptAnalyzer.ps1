@@ -76,7 +76,7 @@ function Get-PowerShellScripts {
     $scripts = @(Get-ChildItem -Path $RootPath -Filter '*.ps1' -Recurse -File -ErrorAction SilentlyContinue)
     
     # Filter out excluded paths
-    if ($Exclude -and $scripts.Count -gt 0) {
+    if ($Exclude.Count -gt 0 -and $scripts.Count -gt 0) {
         $scripts = @($scripts | Where-Object {
             $scriptPath = $_.FullName
             $shouldInclude = $true
@@ -188,5 +188,6 @@ try {
     
 } catch {
     Write-Error "Script analysis failed: $_"
+
     throw
 }

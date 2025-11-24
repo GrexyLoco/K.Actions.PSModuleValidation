@@ -191,7 +191,12 @@ try {
     
 } catch {
     Write-Error "Script analysis failed: $_"
-    Write-Debug "Stack Trace: $($_.ScriptStackTrace)"
+    Write-Information "Stack Trace: $($_.ScriptStackTrace)"
+    Write-Information "Invocation Info: $($_.InvocationInfo)"
+    Write-Information "Exception Message: $($_.Exception.Message)"
+    Write-Information "Exception Type: $($_.Exception.GetType().FullName)"
+    Write-Information "Exception Stack Trace: $($_.Exception.StackTrace)"
+    Write-Information "Exception Source: $($_.Exception.Source)"
 
     throw
 }

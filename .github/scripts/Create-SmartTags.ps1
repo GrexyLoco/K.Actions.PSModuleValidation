@@ -83,7 +83,24 @@ catch {
         return
     }
     
-    # Create/update smart tags based on bump type
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🏷️ STEP 1: Create the base tag first (required before smart tags)
+    # ─────────────────────────────────────────────────────────────────────────
+    Write-Output "🏷️ Creating base tag: $newTag"
+    
+    # Check if base tag already exists
+    $existingTag = git tag -l $newTag 2>$null
+    if (-not $existingTag) {
+        git tag -a $newTag -m "Release $newTag"
+        git push origin $newTag
+        Write-Output "- 🆕 Created base tag: ``$newTag``" >> $env:GITHUB_STEP_SUMMARY
+    } else {
+        Write-Output "- ℹ️ Base tag already exists: ``$newTag``" >> $env:GITHUB_STEP_SUMMARY
+    }
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🏷️ STEP 2: Create/update smart tags pointing to base tag
+    # ─────────────────────────────────────────────────────────────────────────
     switch ($BumpType) {
         'patch' {
             git tag -f $minor $newTag
@@ -93,19 +110,26 @@ catch {
             Write-Output "- ✅ Updated: ``$minor``, ``$major``" >> $env:GITHUB_STEP_SUMMARY
         }
         'minor' {
-            git tag $minor $newTag
-            git push origin $minor
+            git tag -f $minor $newTag
+            git push -f origin $minor
             git tag -f $major $newTag
             git push -f origin $major
             Write-Output "- 🆕 Created: ``$minor``" >> $env:GITHUB_STEP_SUMMARY
             Write-Output "- ✅ Updated: ``$major``" >> $env:GITHUB_STEP_SUMMARY
         }
         'major' {
-            git tag $minor $newTag
-            git push origin $minor
-            git tag $major $newTag
-            git push origin $major
+            git tag -f $minor $newTag
+            git push -f origin $minor
+            git tag -f $major $newTag
+            git push -f origin $major
             Write-Output "- 🆕 Created: ``$minor``, ``$major``" >> $env:GITHUB_STEP_SUMMARY
+        }
+        default {
+            git tag -f $minor $newTag
+            git push -f origin $minor
+            git tag -f $major $newTag
+            git push -f origin $major
+            Write-Output "- ✅ Updated: ``$minor``, ``$major``" >> $env:GITHUB_STEP_SUMMARY
         }
     }
     

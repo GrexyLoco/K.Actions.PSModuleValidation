@@ -1,39 +1,38 @@
 name: 🚀 Action Release Pipeline
 
-# Global permissions for the workflow
-permissions:
-  contents: write    # Required for creating releases and updating README
-  actions: read      # Required to read workflow status
-  pull-requests: read # Required for reading PR information
-
+# 🎯 Triggers
+# - Push to master/main branches (excluding docs)
+# - Manual dispatch with release options
 on:
-  # Automatic trigger on push to main/master branches
   push:
-    branches: [ master, main ]
+    branches: [master, main]
     paths-ignore:
       - '**.md'
       - 'docs/**'
-  # Manual trigger for action releases
   workflow_dispatch:
     inputs:
-      release-type:
-        description: 'Type of release'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-        - 'patch'
-        - 'minor'
-        - 'major'
+      version:
+        description: '📌 Override version (e.g., 1.2.3, leave empty for auto-detection)'
+        required: false
+        type: string
+        default: ''
       force-release:
-        description: 'Force release even if no changes'
+        description: '🔄 Force release even if no changes'
         required: false
         default: false
         type: boolean
 
+# Global permissions for the workflow
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
 env:
   RELEASE_AUTHOR: "github-actions[bot]"
   RELEASE_EMAIL: "github-actions[bot]@users.noreply.github.com"
+  UBUNTU_VERSION: ${{ vars.UBUNTU_VERSION || 'ubuntu-24.04' }}
+  ACTION_NAME: "K.Actions.PSModuleValidation"
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -41,11 +40,11 @@ jobs:
   # ═══════════════════════════════════════════════════════════════════════════
   quality-gate:
     name: 🔐 Quality Gate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.UBUNTU_VERSION || 'ubuntu-24.04' }}
     outputs:
       quality-success: ${{ steps.evaluate.outputs.quality-success }}
       action-name: ${{ steps.validate-structure.outputs.action-name }}
-    
+      action-type: ${{ steps.validate-structure.outputs.action-type }}
     steps:
       - name: 📥 Checkout Repository
         uses: actions/checkout@v4
@@ -80,18 +79,41 @@ jobs:
             -TotalErrors '${{ steps.lint.outputs.total-errors }}' `
             -TotalWarnings '${{ steps.lint.outputs.total-warnings }}'
 
+      # ─────────────────────────────────────────────────────────────────────────
+      # 📊 Quality Gate Summary
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📋 Quality Gate Summary
+        if: always()
+        shell: pwsh
+        run: |
+          $summary = @"
+          ## 🔐 Quality Gate Results
+
+          | Check | Status | Details |
+          |-------|--------|---------|
+          | **Security (GitLeaks)** | ${{ steps.gitleaks.outcome == 'success' && '✅ Passed' || '⚠️ Issues' }} | Secret scanning |
+          | **Action Structure** | ${{ steps.validate-structure.outputs.structure-success == 'true' && '✅ Valid' || '❌ Invalid' }} | action.yml validation |
+          | **Schema Validation** | ${{ steps.validate-structure.outputs.schema-success == 'true' && '✅ Passed' || '⚠️ Skipped' }} | Action schema check |
+          | **PowerShell Linting** | ${{ steps.lint.outputs.analysis-success == 'true' && '✅ Clean' || '⚠️ Issues' }} | ${{ steps.lint.outputs.scripts-analyzed }} scripts, ${{ steps.lint.outputs.total-errors }} errors |
+
+          **Action:** ``${{ steps.validate-structure.outputs.action-name }}`` (${{ steps.validate-structure.outputs.action-type }})
+          **Quality Gate:** ${{ steps.evaluate.outputs.quality-success == 'true' && '✅ **PASSED**' || '❌ **FAILED**' }}
+          "@
+          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
+
   # ═══════════════════════════════════════════════════════════════════════════
   # 📦 JOB 2: PREPARE RELEASE - Version Detection & Changelog
   # ═══════════════════════════════════════════════════════════════════════════
   prepare-release:
     name: 📦 Prepare Release
     needs: quality-gate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.UBUNTU_VERSION || 'ubuntu-24.04' }}
     if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && needs.quality-gate.outputs.quality-success == 'true'
     outputs:
       new-version: ${{ steps.determine-version.outputs.final-version }}
       should-release: ${{ steps.determine-version.outputs.should-release }}
       changelog: ${{ steps.changelog.outputs.changelog }}
+      bump-type: ${{ steps.determine-version.outputs.bump-type }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -121,27 +143,31 @@ jobs:
         shell: pwsh
         run: ./.github/scripts/Generate-Changelog.ps1 -Version '${{ steps.determine-version.outputs.final-version }}'
 
-      - name: 📋 Create Release Summary
+      # ─────────────────────────────────────────────────────────────────────────
+      # 📋 Prepare Release Summary
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📋 Prepare Release Summary
         if: always()
         shell: pwsh
         run: |
           $shouldRelease = '${{ steps.determine-version.outputs.should-release }}'
           $version = '${{ steps.determine-version.outputs.final-version }}'
           $bumpType = '${{ steps.determine-version.outputs.bump-type }}'
+          $currentVersion = '${{ steps.version.outputs.currentVersion }}'
           
           $summary = "## 📦 Prepare Release`n`n"
           
           if ($shouldRelease -eq 'true') {
-              $summary += "### ✅ Release Ready`n`n"
-              $summary += "| Detail | Value |`n"
-              $summary += "|--------|-------|`n"
-              $summary += "| **Version** | ``$version`` |`n"
-              $summary += "| **Bump Type** | ``$bumpType`` |`n"
-              $summary += "| **Status** | Ready for GitHub Release |`n"
+            $summary += "| Property | Value |`n"
+            $summary += "|----------|-------|`n"
+            $summary += "| **Current Version** | ``$currentVersion`` |`n"
+            $summary += "| **New Version** | ``$version`` |`n"
+            $summary += "| **Bump Type** | ``$bumpType`` |`n"
+            $summary += "| **Status** | ✅ Ready for GitHub Release |`n"
           } else {
-              $summary += "### ℹ️ No Release Required`n`n"
-              $summary += "No semantic version changes detected since last tag.`n"
-              $summary += "Use manual workflow dispatch with force-release to create a release anyway.`n"
+            $summary += "### ℹ️ No Release Required`n`n"
+            $summary += "No semantic version changes detected since last tag.`n"
+            $summary += "Use manual workflow dispatch with ``force-release`` to create a release anyway.`n"
           }
           
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
@@ -153,10 +179,11 @@ jobs:
     name: 🚀 GitHub Release
     needs: [quality-gate, prepare-release]
     if: needs.prepare-release.outputs.should-release == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.UBUNTU_VERSION || 'ubuntu-24.04' }}
     outputs:
       release-created: ${{ steps.create-release.outputs.release-created }}
       release-tag: ${{ steps.create-release.outputs.release-tag }}
+      release-url: ${{ steps.create-release.outputs.release-url }}
     
     steps:
       - name: 📥 Checkout Repository
@@ -187,6 +214,41 @@ jobs:
             -Version '${{ needs.prepare-release.outputs.new-version }}' `
             -Changelog $changelog
 
-      - name: 📋 Generate Release Summary
+      # ─────────────────────────────────────────────────────────────────────────
+      # 📋 Release Summary with Usage Example
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📋 Release Summary
+        if: always()
         shell: pwsh
-        run: ./.github/scripts/New-ReleaseSummary.ps1 -Version '${{ needs.prepare-release.outputs.new-version }}'
+        run: |
+          $version = '${{ needs.prepare-release.outputs.new-version }}'
+          $releaseUrl = '${{ steps.create-release.outputs.release-url }}'
+          $actionName = '${{ env.ACTION_NAME }}'
+          
+          $summary = @"
+          ## 🚀 GitHub Release Created
+
+          | Property | Value |
+          |----------|-------|
+          | **Version** | ``v$version`` |
+          | **Tag** | ``v$version`` |
+          | **Release URL** | [$releaseUrl]($releaseUrl) |
+
+          ### 📖 Usage Example
+
+          ``````yaml
+          - name: Validate PowerShell Module
+            uses: GrexyLoco/$actionName@v$version
+            with:
+              modulePath: './MyModule'
+          ``````
+
+          ### 🔗 Quick Reference
+
+          | Reference | Usage |
+          |-----------|-------|
+          | **Latest** | ``GrexyLoco/$actionName@master`` |
+          | **Pinned** | ``GrexyLoco/$actionName@v$version`` |
+          | **Major** | ``GrexyLoco/$actionName@v$($version.Split('.')[0])`` |
+          "@
+          Write-Output $summary >> $env:GITHUB_STEP_SUMMARY

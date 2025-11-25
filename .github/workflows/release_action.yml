@@ -112,7 +112,6 @@ jobs:
     outputs:
       new-version: ${{ steps.determine-version.outputs.final-version }}
       should-release: ${{ steps.determine-version.outputs.should-release }}
-      changelog: ${{ steps.changelog.outputs.changelog }}
       bump-type: ${{ steps.determine-version.outputs.bump-type }}
     
     steps:
@@ -132,16 +131,11 @@ jobs:
         id: determine-version
         shell: pwsh
         run: |
-          ./.github/scripts/Determine-ReleaseVersion.ps1 `
+          ./.github/scripts/Determine-Version.ps1 `
+            -ManualVersion '${{ github.event.inputs.version }}' `
             -AutoBumpType '${{ steps.version.outputs.bumpType }}' `
             -AutoNewVersion '${{ steps.version.outputs.newVersion }}' `
             -ForceRelease '${{ github.event.inputs.force-release }}'
-
-      - name: 📝 Generate Changelog
-        id: changelog
-        if: steps.determine-version.outputs.should-release == 'true'
-        shell: pwsh
-        run: ./.github/scripts/Generate-Changelog.ps1 -Version '${{ steps.determine-version.outputs.final-version }}'
 
       # ─────────────────────────────────────────────────────────────────────────
       # 📋 Prepare Release Summary
@@ -192,27 +186,53 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🏷️ Create Release Tag
-        shell: pwsh
-        run: |
-          ./.github/scripts/Create-ReleaseTag.ps1 `
-            -Version '${{ needs.prepare-release.outputs.new-version }}' `
-            -ReleaseAuthor '${{ env.RELEASE_AUTHOR }}' `
-            -ReleaseEmail '${{ env.RELEASE_EMAIL }}'
-
-      - name: 📦 Create GitHub Release
+      # ─────────────────────────────────────────────────────────────────────────
+      # 📦 Create Draft Release (Template Pattern)
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 📦 Create GitHub Release (Draft)
         id: create-release
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $changelog = @'
-          ${{ needs.prepare-release.outputs.changelog }}
-          '@
-          
           ./.github/scripts/Create-GitHubRelease.ps1 `
             -Version '${{ needs.prepare-release.outputs.new-version }}' `
-            -Changelog $changelog
+            -BumpType '${{ needs.prepare-release.outputs.bump-type }}' `
+            -ActionName '${{ env.ACTION_NAME }}' `
+            -Repository '${{ github.repository }}'
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # 🏷️ Create Smart Tags (v1, v1.2, latest)
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: 🏷️ Create Smart Tags
+        if: steps.create-release.outputs.release-created == 'true'
+        shell: pwsh
+        run: |
+          ./.github/scripts/Create-SmartTags.ps1 `
+            -NewVersion '${{ needs.prepare-release.outputs.new-version }}' `
+            -BumpType '${{ needs.prepare-release.outputs.bump-type }}' `
+            -ReleaseAuthor '${{ env.RELEASE_AUTHOR }}' `
+            -ReleaseEmail '${{ env.RELEASE_EMAIL }}'
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # ✅ Publish Release
+      # ─────────────────────────────────────────────────────────────────────────
+      - name: ✅ Publish GitHub Release
+        if: steps.create-release.outputs.release-created == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_TAG="${{ steps.create-release.outputs.release-tag }}"
+          VERSION="${{ needs.prepare-release.outputs.new-version }}"
+          
+          # Determine if prerelease
+          if [[ "$VERSION" =~ (alpha|beta|rc|preview|pre) ]]; then
+            echo "🧪 Publishing prerelease..."
+            gh release edit "$RELEASE_TAG" --draft=false
+          else
+            echo "🚀 Publishing stable release..."
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
 
       # ─────────────────────────────────────────────────────────────────────────
       # 📋 Release Summary with Usage Example

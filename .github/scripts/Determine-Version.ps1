@@ -1,37 +1,31 @@
 <#
 .SYNOPSIS
-    Determines the final release version from manual input or auto-detection.
+    Determines the final version for release.
 
 .DESCRIPTION
-    Evaluates if a manual version override is provided, otherwise uses the
-    auto-detected version from K.Actions.NextActionVersion. Sets appropriate outputs
-    for subsequent workflow steps.
+    Evaluates manual version override vs. auto-detected version.
+    Handles force-release flag for creating releases without changes.
 
 .PARAMETER ManualVersion
-    Optional manual version override from workflow input.
+    Manually specified version (overrides auto-detection).
 
 .PARAMETER AutoBumpType
-    Auto-detected bump type from K.Actions.NextActionVersion (major/minor/patch/none).
+    Auto-detected bump type from commit analysis.
 
 .PARAMETER AutoNewVersion
-    Auto-detected new version from K.Actions.NextActionVersion.
+    Auto-detected new version.
 
 .PARAMETER ForceRelease
-    Force release even if no changes detected ('true'/'false' string).
+    Force release even if no changes detected.
 
 .OUTPUTS
-    Sets GITHUB_OUTPUT variables: final-version, should-release, bump-type
-    Writes workflow summary to GITHUB_STEP_SUMMARY.
+    Sets GITHUB_OUTPUT variables: final-version, bump-type, should-release
 
 .EXAMPLE
-    ./Determine-Version.ps1 -ManualVersion "1.2.3"
-    ./Determine-Version.ps1 -AutoBumpType "patch" -AutoNewVersion "0.1.5"
-    ./Determine-Version.ps1 -AutoBumpType "none" -ForceRelease "true"
+    ./Determine-Version.ps1 -ManualVersion '' -AutoBumpType 'patch' -AutoNewVersion '1.2.3'
 
 .NOTES
-    Platform-independent script for GitHub Actions workflows.
-    Handles both manual version override and automatic version detection.
-    Based on: .github/templates/scripts/Determine-Version.ps1
+    Platform-independent PowerShell script for GitHub Actions workflows.
 #>
 
 [CmdletBinding()]
@@ -49,42 +43,58 @@ param(
     [string]$ForceRelease = 'false'
 )
 
-if ($ManualVersion) {
-    # Manual version override
-    $version = $ManualVersion -replace '^v', ''
-    Write-Output "🎯 Manual version override: $version"
-    "final-version=$version" >> $env:GITHUB_OUTPUT
-    "should-release=true" >> $env:GITHUB_OUTPUT
-    "bump-type=manual" >> $env:GITHUB_OUTPUT
-    
-    "## 📌 Manual Version Override" >> $env:GITHUB_STEP_SUMMARY
-    "**Override Version:** ``$version``" >> $env:GITHUB_STEP_SUMMARY
-} else {
-    # Auto-detected version
-    $version = $AutoNewVersion -replace '^v', ''
-    Write-Output "🔍 Auto-detected bump type: $AutoBumpType"
-    Write-Output "🔍 Auto-detected version: $version"
-    
-    "final-version=$version" >> $env:GITHUB_OUTPUT
-    "bump-type=$AutoBumpType" >> $env:GITHUB_OUTPUT
-    
-    if ($AutoBumpType -eq 'none' -and $ForceRelease -ne 'true') {
-        "should-release=false" >> $env:GITHUB_OUTPUT
-        
-        "## 🔁 No Release Required" >> $env:GITHUB_STEP_SUMMARY
-        "No version changes detected. Workflow will exit gracefully." >> $env:GITHUB_STEP_SUMMARY
-    } elseif ($AutoBumpType -eq 'none' -and $ForceRelease -eq 'true') {
-        "should-release=true" >> $env:GITHUB_OUTPUT
-        "bump-type=patch" >> $env:GITHUB_OUTPUT
-        
-        "## 🔄 Forced Release" >> $env:GITHUB_STEP_SUMMARY
-        "**Force Release:** enabled (defaulting to patch)" >> $env:GITHUB_STEP_SUMMARY
-        "**New Version:** ``$version``" >> $env:GITHUB_STEP_SUMMARY
-    } else {
-        "should-release=true" >> $env:GITHUB_OUTPUT
-        
-        "## ⬆️ Version Bump Detected" >> $env:GITHUB_STEP_SUMMARY
-        "**Bump Type:** ``$AutoBumpType``" >> $env:GITHUB_STEP_SUMMARY
-        "**New Version:** ``$version``" >> $env:GITHUB_STEP_SUMMARY
-    }
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Write-Information "Determining final version"
+
+$finalVersion = ''
+$bumpType = ''
+$shouldRelease = $false
+
+# Priority 1: Manual version override
+if ($ManualVersion -and $ManualVersion -ne '') {
+    $finalVersion = $ManualVersion.TrimStart('v')
+    $bumpType = 'manual'
+    $shouldRelease = $true
+    Write-Information "Using manual version: $finalVersion"
 }
+# Priority 2: Auto-detected version
+elseif ($AutoNewVersion -and $AutoNewVersion -ne '' -and $AutoBumpType -and $AutoBumpType -ne 'none') {
+    $finalVersion = $AutoNewVersion.TrimStart('v')
+    $bumpType = $AutoBumpType
+    $shouldRelease = $true
+    Write-Information "Using auto-detected version: $finalVersion ($bumpType)"
+}
+# Priority 3: Force release with existing version
+elseif ($ForceRelease -eq 'true') {
+    if ($AutoNewVersion -and $AutoNewVersion -ne '') {
+        $finalVersion = $AutoNewVersion.TrimStart('v')
+    } else {
+        # Fallback: get latest tag
+        $latestTag = git describe --tags --abbrev=0 2>$null
+        if ($latestTag) {
+            $finalVersion = $latestTag.TrimStart('v')
+        } else {
+            $finalVersion = '0.1.0'
+        }
+    }
+    $bumpType = 'force'
+    $shouldRelease = $true
+    Write-Information "Force release: $finalVersion"
+}
+else {
+    Write-Information "No release required - no version changes detected"
+    $shouldRelease = $false
+    $finalVersion = $AutoNewVersion.TrimStart('v')
+    $bumpType = 'none'
+}
+
+Write-Information "Final version: $finalVersion"
+Write-Information "Bump type: $bumpType"
+Write-Information "Should release: $shouldRelease"
+
+# Set outputs
+"final-version=$finalVersion" >> $env:GITHUB_OUTPUT
+"bump-type=$bumpType" >> $env:GITHUB_OUTPUT
+"should-release=$($shouldRelease.ToString().ToLower())" >> $env:GITHUB_OUTPUT

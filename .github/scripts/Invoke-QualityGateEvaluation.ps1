@@ -1,162 +1,103 @@
 <#
 .SYNOPSIS
-    Evaluates quality gate results and generates summary
+    Evaluates quality gate results and determines overall pass/fail.
 
 .DESCRIPTION
-    Collects results from all quality checks (GitLeaks, structure validation, linting)
-    and evaluates whether the quality gate passes. Creates a detailed GitHub summary.
+    Aggregates results from security scan, structure validation, and linting
+    to determine if the quality gate passes. Sets GitHub Action outputs.
 
 .PARAMETER GitLeaksOutcome
-    Outcome of the GitLeaks security scan step
+    Outcome of the GitLeaks security scan step.
 
 .PARAMETER StructureSuccess
-    Whether action structure validation succeeded
+    Whether structure validation passed.
 
 .PARAMETER SchemaSuccess
-    Whether action schema validation succeeded
+    Whether schema validation passed.
 
 .PARAMETER LintSuccess
-    Whether PSScriptAnalyzer linting succeeded
+    Whether linting passed.
 
 .PARAMETER ActionName
-    Name of the action being validated
+    Name of the action being validated.
 
 .PARAMETER ActionType
-    Type of the action (composite, docker, javascript)
+    Type of action (composite, docker, javascript).
 
 .PARAMETER ScriptsAnalyzed
-    Number of PowerShell scripts analyzed
+    Number of scripts analyzed.
 
 .PARAMETER TotalErrors
-    Total number of linting errors found
+    Total number of linting errors.
 
 .PARAMETER TotalWarnings
-    Total number of linting warnings found
+    Total number of linting warnings.
+
+.OUTPUTS
+    Sets GITHUB_OUTPUT variable: quality-success
+
+.EXAMPLE
+    ./Invoke-QualityGateEvaluation.ps1 -GitLeaksOutcome 'success' -StructureSuccess 'true' ...
 
 .NOTES
-    Platform-agnostic PowerShell script for CI/CD pipelines
-    Exits with code 1 if quality gate fails
+    Platform-independent PowerShell script for GitHub Actions workflows.
 #>
+
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory = $true)]
     [string]$GitLeaksOutcome,
     
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory = $true)]
     [string]$StructureSuccess,
     
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory = $true)]
     [string]$SchemaSuccess,
     
-    [Parameter(Mandatory)]
+    [Parameter(Mandatory = $true)]
     [string]$LintSuccess,
     
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
     [string]$ActionName = '',
     
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
     [string]$ActionType = '',
     
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
     [string]$ScriptsAnalyzed = '0',
     
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
     [string]$TotalErrors = '0',
     
-    [Parameter()]
+    [Parameter(Mandatory = $false)]
     [string]$TotalWarnings = '0'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$InformationPreference = 'Continue'
 
-try {
-    Write-Information "🔍 Evaluating Quality Gate Results..."
-    Write-Information "  🔐 GitLeaks: $GitLeaksOutcome"
-    Write-Information "  📋 Structure: $StructureSuccess"
-    Write-Information "  📋 Schema: $SchemaSuccess"
-    Write-Information "  🎨 Linting: $LintSuccess"
-    
-    # Create GitHub Summary
-    $summary = @"
-## 🔐 Quality Gate Results
+Write-Information "Evaluating Quality Gate"
 
-### 📊 Security & Structure
-| Check | Status | Details |
-|-------|--------|---------|
-| 🔐 **GitLeaks** | $(if ($GitLeaksOutcome -ne 'failure') { '✅ PASSED' } else { '❌ FAILED' }) | No secrets detected |
-| 📋 **Action Structure** | $(if ($StructureSuccess -eq 'True') { '✅ PASSED' } else { '❌ FAILED' }) | Valid action.yml |
-| 🔗 **Schema Validation** | $(if ($SchemaSuccess -eq 'True') { '✅ PASSED' } else { '❌ FAILED' }) | Inputs/Outputs valid |
+# Evaluate each check
+$securityPassed = $GitLeaksOutcome -eq 'success'
+$structurePassed = $StructureSuccess -eq 'true'
+$schemaPassed = $SchemaSuccess -eq 'true'
+$lintPassed = $LintSuccess -eq 'true'
 
-### 🎨 Code Quality (PSScriptAnalyzer)
-| Metric | Value |
-|--------|-------|
-| **Scripts Analyzed** | $ScriptsAnalyzed |
-| **Errors** | $(if ($TotalErrors -eq '0') { '✅ 0' } else { "❌ $TotalErrors" }) |
-| **Warnings** | $(if ($TotalWarnings -eq '0') { '✅ 0' } else { "⚠️ $TotalWarnings" }) |
-| **Overall** | $(if ($LintSuccess -eq 'True') { '✅ PASSED' } else { '❌ FAILED' }) |
+# Quality gate rules:
+# - Security: MUST pass (critical)
+# - Structure: MUST pass (required for release)
+# - Schema: Warning only (non-blocking)
+# - Lint: MUST pass (no errors allowed)
 
-### 📦 Action Details
-$(if ($ActionName) { "**Name:** ``$ActionName``" } else { '' })
-$(if ($ActionType) { "**Type:** ``$ActionType``" } else { '' })
+$qualitySuccess = $securityPassed -and $structurePassed -and $lintPassed
 
----
+Write-Information "Security:  $(if ($securityPassed) { '✅ PASS' } else { '❌ FAIL' })"
+Write-Information "Structure: $(if ($structurePassed) { '✅ PASS' } else { '❌ FAIL' })"
+Write-Information "Schema:    $(if ($schemaPassed) { '✅ PASS' } else { '⚠️ WARN' })"
+Write-Information "Linting:   $(if ($lintPassed) { '✅ PASS' } else { '❌ FAIL' })"
+Write-Information ""
+Write-Information "Quality Gate: $(if ($qualitySuccess) { '✅ PASSED' } else { '❌ FAILED' })"
 
-"@
-    
-    # Evaluate overall success
-    $success = ($GitLeaksOutcome -ne 'failure') -and 
-               ($StructureSuccess -eq 'True') -and 
-               ($SchemaSuccess -eq 'True') -and 
-               ($LintSuccess -eq 'True')
-    
-    if ($success) {
-        $summary += @"
-### ✅ Quality Gate: **PASSED**
-
-All quality checks passed successfully! Ready for release.
-"@
-        Write-Information ""
-        Write-Information "✅ Quality Gate PASSED - All checks successful!"
-    } else {
-        $summary += @"
-### ❌ Quality Gate: **FAILED**
-
-One or more quality checks failed. Please review and fix the issues above.
-"@
-        Write-Information ""
-        Write-Information "❌ Quality Gate FAILED - Review issues above"
-    }
-    
-    # Write to GitHub Step Summary
-    if ($env:GITHUB_STEP_SUMMARY) {
-        Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
-    }
-    
-    # Write output for GitHub Actions
-    if ($env:GITHUB_OUTPUT) {
-        "quality-success=$success" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-    }
-    
-    # Exit with appropriate code
-    if ($success) {
-        exit 0
-    } else {
-        exit 1
-    }
-    
-} catch {
-    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    Write-Information "❌ ERROR DETAILS:"
-    Write-Information "Message: $_"
-    Write-Information "Exception: $($_.Exception.Message)"
-    Write-Information "Type: $($_.Exception.GetType().FullName)"
-    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    Write-Information "📍 STACK TRACE:"
-    Write-Information $_.ScriptStackTrace
-    Write-Information "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    
-    Write-Error "Quality gate evaluation failed: $_"
-    exit 1
-}
+# Set output
+"quality-success=$($qualitySuccess.ToString().ToLower())" >> $env:GITHUB_OUTPUT

@@ -43,7 +43,7 @@ $content = Get-Content -Path $actionYml.FullName -Raw
 
 # Extract action name
 $actionName = ''
-if ($content -match "name:\s*['\"]?([^'\"`n]+)['\"]?") {
+if ($content -match 'name:\s*[''"]?([^''"\r\n]+)[''"]?') {
     $actionName = $Matches[1].Trim()
 }
 

@@ -99,21 +99,40 @@ jobs:
           
           $actionName = '${{ steps.discover-action.outputs.action-name }}'
           $actionType = '${{ steps.discover-action.outputs.action-type }}'
-          $scriptsAnalyzed = '${{ steps.lint.outputs.scripts-analyzed }}'
+          $scriptsAnalyzed = [int]'${{ steps.lint.outputs.scripts-analyzed }}'
           $totalErrors = '${{ steps.lint.outputs.total-errors }}'
           $totalWarnings = '${{ steps.lint.outputs.total-warnings }}'
           
           $overallStatus = if ($qualityOk) { '✅ **PASSED**' } else { '❌ **FAILED**' }
           
+          # Linting result with warning for 0 scripts
+          $lintResult = if ($lintOk) { '✅ Passed' } else { '⚠️ Issues' }
+          $lintDetails = "$scriptsAnalyzed scripts, $totalErrors errors"
+          
           $summary = @"
-          ## 🔐 Quality Gate Results
+          <details>
+          <summary>🔐 Quality Gate Results - $overallStatus</summary>
           
           | Check | Result | Details |
           |-------|--------|---------|
           | **🔒 Security** | $(if ($gitleaksOk) { '✅ Passed' } else { '⚠️ Issues' }) | GitLeaks secret scanning |
-          | **📋 Structure** | $(if ($structureOk) { '✅ Valid' } else { '❌ Invalid' }) | action.yml validation |
+          | **📋 Structure** | $(if ($structureOk) { '✅ Passed' } else { '❌ Failed' }) | action.yml validation |
           | **📐 Schema** | $(if ($schemaOk) { '✅ Passed' } else { '⚠️ Skipped' }) | Action schema check |
-          | **🎨 Linting** | $(if ($lintOk) { '✅ Clean' } else { '⚠️ Issues' }) | $scriptsAnalyzed scripts, $totalErrors errors |
+          | **🎨 Linting** | $lintResult | $lintDetails |
+          
+          "@
+          
+          # Add warning block if 0 scripts analyzed
+          if ($scriptsAnalyzed -eq 0) {
+            $summary += @"
+          
+          > ⚠️ **Note:** 0 scripts analyzed. This is valid if PowerShell code is embedded in ``action.yml`` (composite action).
+          > Excluded from discovery: ``.git/``, ``.github/scripts/``
+          
+          "@
+          }
+          
+          $summary += @"
           
           ### 🎯 Action Details
           | Property | Value |
@@ -122,6 +141,8 @@ jobs:
           | **Type** | ``$actionType`` |
           | **Warnings** | ``$totalWarnings`` |
           | **Overall** | $overallStatus |
+          
+          </details>
           
           ---
           "@
@@ -177,9 +198,11 @@ jobs:
           $currentVersion = '${{ steps.version.outputs.currentVersion }}'
           
           $statusIcon = if ($shouldRelease -eq 'true') { '✅ Ready' } else { 'ℹ️ No Release' }
+          $headerStatus = if ($shouldRelease -eq 'true') { '✅ Ready for Release' } else { 'ℹ️ No Release Required' }
           
           $summary = @"
-          ## 📦 Prepare Release
+          <details>
+          <summary>📦 Prepare Release - $headerStatus</summary>
           
           | Property | Value |
           |----------|-------|
@@ -191,8 +214,21 @@ jobs:
           "@
           
           if ($shouldRelease -ne 'true') {
-            $summary += "`n### ℹ️ No Release Required`n`nNo semantic version changes detected since last tag.`nUse manual workflow dispatch with ``force-release`` to create a release anyway.`n"
+            $summary += @"
+          
+          > ℹ️ **No Release Required**
+          > No semantic version changes detected since last tag.
+          > Use manual workflow dispatch with ``force-release`` to create a release anyway.
+          
+          "@
           }
+          
+          $summary += @"
+          
+          </details>
+          
+          ---
+          "@
           
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
@@ -238,21 +274,38 @@ jobs:
           $version = '${{ needs.prepare-release.outputs.new-version }}'
           $releaseUrl = '${{ steps.create-release.outputs.release-url }}'
           $releaseCreated = '${{ steps.create-release.outputs.release-created }}'
+          $tagsCreated = '${{ steps.create-release.outputs.tags-created }}'
           $actionName = '${{ needs.quality-gate.outputs.action-name }}'
           $repository = '${{ github.repository }}'
           
           $statusIcon = if ($releaseCreated -eq 'true') { '✅ Published' } else { '❌ Failed' }
+          $headerStatus = if ($releaseCreated -eq 'true') { '✅ Published' } else { '❌ Failed' }
           $majorVersion = $version.Split('.')[0]
+          $minorVersion = "$($version.Split('.')[0]).$($version.Split('.')[1])"
+          
+          # Parse tags created
+          $tagsList = if ($tagsCreated) { $tagsCreated -split ',' } else { @("v$version", "v$majorVersion", "v$minorVersion", 'latest') }
+          $tagsDisplay = ($tagsList | ForEach-Object { "``$_``" }) -join ', '
           
           $summary = @"
-          ## 🚀 GitHub Release
+          <details open>
+          <summary>🚀 GitHub Release - $headerStatus</summary>
           
           | Property | Value |
           |----------|-------|
           | **Version** | ``v$version`` |
-          | **Tag** | ``v$version`` |
+          | **Release Tag** | ``v$version`` |
           | **Status** | $statusIcon |
           | **Release** | [$releaseUrl]($releaseUrl) |
+          
+          ### 🏷️ Tags Created/Updated
+          
+          | Tag | Target | Description |
+          |-----|--------|-------------|
+          | ``v$version`` | HEAD | 📌 Pinned version (immutable) |
+          | ``v$minorVersion`` | → ``v$version`` | 🔄 Minor version (moves with patches) |
+          | ``v$majorVersion`` | → ``v$version`` | 🔄 Major version (moves with minor/patches) |
+          | ``latest`` | → ``v$version`` | 🔄 Always points to newest release |
           
           ### 📖 Usage Example
           
@@ -265,11 +318,13 @@ jobs:
           
           ### 🔗 Quick Reference
           
-          | Reference | Usage |
-          |-----------|-------|
-          | **Latest** | ``$repository@master`` |
-          | **Pinned** | ``$repository@v$version`` |
-          | **Major** | ``$repository@v$majorVersion`` |
+          | Reference | Usage | Description |
+          |-----------|-------|-------------|
+          | **Latest** | ``$repository@latest`` | Always newest version |
+          | **Pinned** | ``$repository@v$version`` | Exact version |
+          | **Major** | ``$repository@v$majorVersion`` | Auto-update within major |
+          
+          </details>
           
           ---
           **🎉 Release pipeline complete!**

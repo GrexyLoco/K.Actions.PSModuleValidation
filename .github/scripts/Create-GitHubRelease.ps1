@@ -91,9 +91,10 @@ if ($smartagrAvailable) {
         "release-created=true" >> $env:GITHUB_OUTPUT
         "release-tag=$releaseTag" >> $env:GITHUB_OUTPUT
         "release-url=$($result.ReleaseUrl)" >> $env:GITHUB_OUTPUT
+        "tags-created=$($result.TagsCreated -join ',')" >> $env:GITHUB_OUTPUT
         
-        Write-Information "✅ Release created via Smartagr"
-        Write-Information "   Tags: $($result.TagsCreated -join ', ')"
+        Write-Host "✅ Release created via Smartagr"
+        Write-Host "   Tags: $($result.TagsCreated -join ', ')"
     } else {
         throw "Smartagr release failed: $($result.GitHubReleaseResult.ErrorMessage)"
     }
@@ -156,21 +157,23 @@ if ($smartagrAvailable) {
     if ($LASTEXITCODE -ne 0) { throw "Failed to create draft release" }
 
     # Step 3: Create smart tags
-    Write-Information "Creating smart tags"
+    Write-Host "Creating smart tags"
     $versionParts = $Version -split '\.'
     $major = "v$($versionParts[0])"
     $minor = "v$($versionParts[0]).$($versionParts[1])"
+    $tagsCreated = @($releaseTag)
     
     foreach ($smartTag in @($major, $minor, 'latest')) {
         git tag -d $smartTag 2>$null
         git push origin --delete $smartTag 2>$null
         git tag -f $smartTag $releaseTag
         git push origin $smartTag --force
-        Write-Information "  Created: $smartTag → $releaseTag"
+        Write-Host "  Created: $smartTag → $releaseTag"
+        $tagsCreated += $smartTag
     }
 
     # Step 4: Publish release
-    Write-Information "Publishing release"
+    Write-Host "Publishing release"
     if ($isPrerelease) {
         gh release edit $releaseTag --draft=false
     } else {
@@ -184,7 +187,8 @@ if ($smartagrAvailable) {
     "release-created=true" >> $env:GITHUB_OUTPUT
     "release-tag=$releaseTag" >> $env:GITHUB_OUTPUT
     "release-url=$releaseUrl" >> $env:GITHUB_OUTPUT
+    "tags-created=$($tagsCreated -join ',')" >> $env:GITHUB_OUTPUT
     
-    Write-Information "✅ Release created via gh CLI"
-    Write-Information "   Smart tags: $major, $minor, latest"
+    Write-Host "✅ Release created via gh CLI"
+    Write-Host "   Smart tags: $major, $minor, latest"
 }

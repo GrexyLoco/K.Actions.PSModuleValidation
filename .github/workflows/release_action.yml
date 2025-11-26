@@ -86,19 +86,41 @@ jobs:
         if: always()
         shell: pwsh
         run: |
+          $gitleaksOk = '${{ steps.gitleaks.outcome }}' -eq 'success'
+          $structureOk = '${{ steps.validate-structure.outputs.structure-success }}' -eq 'true'
+          $schemaOk = '${{ steps.validate-structure.outputs.schema-success }}' -eq 'true'
+          $lintOk = '${{ steps.lint.outputs.analysis-success }}' -eq 'true'
+          $qualityOk = '${{ steps.evaluate.outputs.quality-success }}' -eq 'true'
+          
+          $actionName = '${{ steps.validate-structure.outputs.action-name }}'
+          $actionType = '${{ steps.validate-structure.outputs.action-type }}'
+          $scriptsAnalyzed = '${{ steps.lint.outputs.scripts-analyzed }}'
+          $totalErrors = '${{ steps.lint.outputs.total-errors }}'
+          $totalWarnings = '${{ steps.lint.outputs.total-warnings }}'
+          
+          $overallStatus = if ($qualityOk) { '✅ **PASSED**' } else { '❌ **FAILED**' }
+          
           $summary = @"
           ## 🔐 Quality Gate Results
-
-          | Check | Status | Details |
+          
+          | Check | Result | Details |
           |-------|--------|---------|
-          | **Security (GitLeaks)** | ${{ steps.gitleaks.outcome == 'success' && '✅ Passed' || '⚠️ Issues' }} | Secret scanning |
-          | **Action Structure** | ${{ steps.validate-structure.outputs.structure-success == 'true' && '✅ Valid' || '❌ Invalid' }} | action.yml validation |
-          | **Schema Validation** | ${{ steps.validate-structure.outputs.schema-success == 'true' && '✅ Passed' || '⚠️ Skipped' }} | Action schema check |
-          | **PowerShell Linting** | ${{ steps.lint.outputs.analysis-success == 'true' && '✅ Clean' || '⚠️ Issues' }} | ${{ steps.lint.outputs.scripts-analyzed }} scripts, ${{ steps.lint.outputs.total-errors }} errors |
-
-          **Action:** ``${{ steps.validate-structure.outputs.action-name }}`` (${{ steps.validate-structure.outputs.action-type }})
-          **Quality Gate:** ${{ steps.evaluate.outputs.quality-success == 'true' && '✅ **PASSED**' || '❌ **FAILED**' }}
+          | **🔒 Security** | $(if ($gitleaksOk) { '✅ Passed' } else { '⚠️ Issues' }) | GitLeaks secret scanning |
+          | **📋 Structure** | $(if ($structureOk) { '✅ Valid' } else { '❌ Invalid' }) | action.yml validation |
+          | **📐 Schema** | $(if ($schemaOk) { '✅ Passed' } else { '⚠️ Skipped' }) | Action schema check |
+          | **🎨 Linting** | $(if ($lintOk) { '✅ Clean' } else { '⚠️ Issues' }) | $scriptsAnalyzed scripts, $totalErrors errors |
+          
+          ### 🎯 Action Details
+          | Property | Value |
+          |----------|-------|
+          | **Name** | ``$actionName`` |
+          | **Type** | ``$actionType`` |
+          | **Warnings** | ``$totalWarnings`` |
+          | **Overall** | $overallStatus |
+          
+          ---
           "@
+          
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
 
   # ═══════════════════════════════════════════════════════════════════════════
@@ -149,19 +171,23 @@ jobs:
           $bumpType = '${{ steps.determine-version.outputs.bump-type }}'
           $currentVersion = '${{ steps.version.outputs.currentVersion }}'
           
-          $summary = "## 📦 Prepare Release`n`n"
+          # Determine status icon
+          $statusIcon = if ($shouldRelease -eq 'true') { '✅ Ready' } else { 'ℹ️ No Release' }
           
-          if ($shouldRelease -eq 'true') {
-            $summary += "| Property | Value |`n"
-            $summary += "|----------|-------|`n"
-            $summary += "| **Current Version** | ``$currentVersion`` |`n"
-            $summary += "| **New Version** | ``$version`` |`n"
-            $summary += "| **Bump Type** | ``$bumpType`` |`n"
-            $summary += "| **Status** | ✅ Ready for GitHub Release |`n"
-          } else {
-            $summary += "### ℹ️ No Release Required`n`n"
-            $summary += "No semantic version changes detected since last tag.`n"
-            $summary += "Use manual workflow dispatch with ``force-release`` to create a release anyway.`n"
+          $summary = @"
+          ## 📦 Prepare Release
+          
+          | Property | Value |
+          |----------|-------|
+          | **Current Version** | ``$currentVersion`` |
+          | **New Version** | ``$version`` |
+          | **Bump Type** | ``$bumpType`` |
+          | **Status** | $statusIcon |
+          
+          "@
+          
+          if ($shouldRelease -ne 'true') {
+            $summary += "`n### ℹ️ No Release Required`n`nNo semantic version changes detected since last tag.`nUse manual workflow dispatch with ``force-release`` to create a release anyway.`n"
           }
           
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY
@@ -243,32 +269,40 @@ jobs:
         run: |
           $version = '${{ needs.prepare-release.outputs.new-version }}'
           $releaseUrl = '${{ steps.create-release.outputs.release-url }}'
+          $releaseCreated = '${{ steps.create-release.outputs.release-created }}'
           $actionName = '${{ env.ACTION_NAME }}'
+          $repository = '${{ github.repository }}'
+          
+          # Determine release status
+          $statusIcon = if ($releaseCreated -eq 'true') { '✅ Published' } else { '❌ Failed' }
+          $majorVersion = $version.Split('.')[0]
           
           $summary = @"
-          ## 🚀 GitHub Release Created
-
+          ## 🚀 GitHub Release
+          
           | Property | Value |
           |----------|-------|
           | **Version** | ``v$version`` |
           | **Tag** | ``v$version`` |
-          | **Release URL** | [$releaseUrl]($releaseUrl) |
-
+          | **Status** | $statusIcon |
+          | **Release** | [$releaseUrl]($releaseUrl) |
+          
           ### 📖 Usage Example
-
+          
           ``````yaml
           - name: Validate PowerShell Module
-            uses: GrexyLoco/$actionName@v$version
+            uses: $repository@v$version
             with:
               modulePath: './MyModule'
           ``````
-
+          
           ### 🔗 Quick Reference
-
+          
           | Reference | Usage |
           |-----------|-------|
-          | **Latest** | ``GrexyLoco/$actionName@master`` |
-          | **Pinned** | ``GrexyLoco/$actionName@v$version`` |
-          | **Major** | ``GrexyLoco/$actionName@v$($version.Split('.')[0])`` |
+          | **Latest** | ``$repository@master`` |
+          | **Pinned** | ``$repository@v$version`` |
+          | **Major** | ``$repository@v$majorVersion`` |
           "@
+          
           Write-Output $summary >> $env:GITHUB_STEP_SUMMARY

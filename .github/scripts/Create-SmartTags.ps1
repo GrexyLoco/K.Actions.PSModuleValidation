@@ -63,9 +63,13 @@ try {
     Write-Output "✅ Using K.PSGallery.Smartagr for smart tag management"
     
     # Use Smartagr for intelligent tag management
-    New-Smartag -NewTag $newTag -BumpType $BumpType -Force
+    # New-SemanticReleaseTags creates: base tag (v1.2.3), minor tag (v1.2), major tag (v1), latest
+    $tagResult = New-SemanticReleaseTags -TargetVersion $newTag -Force
     
     Write-Output "✅ **Smart tags created via Smartagr**" >> $env:GITHUB_STEP_SUMMARY
+    if ($tagResult.AllTags) {
+        Write-Output "- Tags: $($tagResult.AllTags -join ', ')" >> $env:GITHUB_STEP_SUMMARY
+    }
 }
 catch {
     Write-Output "⚠️ K.PSGallery.Smartagr not available - using manual tag creation"

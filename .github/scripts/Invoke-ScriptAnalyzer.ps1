@@ -22,36 +22,44 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Write-Information "Running PSScriptAnalyzer on repository"
+Write-Host "Running PSScriptAnalyzer on repository"
+Write-Host "Current directory: $(Get-Location)"
 
-# Find all PowerShell scripts
-$scripts = Get-ChildItem -Path . -Filter '*.ps1' -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' }
+# Find all PowerShell scripts (exclude .github/scripts to avoid analyzing ourselves)
+$allFiles = Get-ChildItem -Path . -Filter '*.ps1' -Recurse -ErrorAction SilentlyContinue
+$scripts = @($allFiles | Where-Object { 
+    $_.FullName -notmatch '[\\/]\.git[\\/]' -and 
+    $_.FullName -notmatch '[\\/]\.github[\\/]scripts[\\/]'
+})
 
 $scriptsAnalyzed = $scripts.Count
 $totalErrors = 0
 $totalWarnings = 0
 $analysisSuccess = $true
 
+Write-Host "Found $scriptsAnalyzed scripts to analyze"
+
 if ($scriptsAnalyzed -eq 0) {
-    Write-Information "No PowerShell scripts found to analyze"
+    Write-Host "No PowerShell scripts found to analyze (excluding .github/scripts)"
+    # List what files exist for debugging
+    $allPs1 = @(Get-ChildItem -Path . -Filter '*.ps1' -Recurse -ErrorAction SilentlyContinue)
+    Write-Host "Total .ps1 files in repo: $($allPs1.Count)"
 } else {
-    Write-Information "Found $scriptsAnalyzed scripts to analyze"
     
     # Check if PSScriptAnalyzer is available
     $psaAvailable = $null -ne (Get-Module -ListAvailable -Name PSScriptAnalyzer)
     
     if (-not $psaAvailable) {
-        Write-Information "Installing PSScriptAnalyzer..."
+        Write-Host "Installing PSScriptAnalyzer..."
         Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -SkipPublisherCheck
     }
     
     Import-Module PSScriptAnalyzer -Force
     
     foreach ($script in $scripts) {
-        Write-Information "Analyzing: $($script.Name)"
+        Write-Host "Analyzing: $($script.Name)"
         
-        $results = Invoke-ScriptAnalyzer -Path $script.FullName -Severity Error, Warning
+        $results = @(Invoke-ScriptAnalyzer -Path $script.FullName -Severity Error, Warning)
         
         $errors = @($results | Where-Object { $_.Severity -eq 'Error' })
         $warnings = @($results | Where-Object { $_.Severity -eq 'Warning' })
@@ -72,7 +80,7 @@ if ($scriptsAnalyzed -eq 0) {
     }
 }
 
-Write-Information "Analysis complete: $totalErrors errors, $totalWarnings warnings"
+Write-Host "Analysis complete: $totalErrors errors, $totalWarnings warnings"
 
 # Set outputs
 "analysis-success=$($analysisSuccess.ToString().ToLower())" >> $env:GITHUB_OUTPUT
@@ -81,7 +89,7 @@ Write-Information "Analysis complete: $totalErrors errors, $totalWarnings warnin
 "total-warnings=$totalWarnings" >> $env:GITHUB_OUTPUT
 
 if ($analysisSuccess) {
-    Write-Information "✅ Script analysis passed"
+    Write-Host "✅ Script analysis passed"
 } else {
     Write-Warning "❌ Script analysis found errors"
 }

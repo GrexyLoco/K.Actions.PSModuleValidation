@@ -45,7 +45,9 @@ if (-not $actionYml) {
     # Required fields check
     $requiredFields = @('name', 'description', 'runs')
     foreach ($field in $requiredFields) {
-        if ($content -notmatch "^$field\s*:" -and $content -notmatch "`n$field\s*:") {
+        $patternStart = '^' + $field + '\s*:'
+        $patternNewline = '\n' + $field + '\s*:'
+        if ($content -notmatch $patternStart -and $content -notmatch $patternNewline) {
             $structureSuccess = $false
             $errors += "Missing required field: $field"
         }
@@ -63,7 +65,8 @@ if (-not $actionYml) {
     $validUsing = @('composite', 'docker', 'node12', 'node16', 'node20')
     $usingMatch = $false
     foreach ($using in $validUsing) {
-        if ($content -match "using:\s*['\"]?$using") {
+        $pattern = 'using:\s*[''"]?' + $using
+        if ($content -match $pattern) {
             $usingMatch = $true
             break
         }

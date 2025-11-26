@@ -54,11 +54,11 @@ if (-not $actionName) {
 
 # Determine action type
 $actionType = 'unknown'
-if ($content -match 'runs:\s*\n\s*using:\s*[''"]?composite[''"]?') {
+if ($content -match 'runs:\s*[\r\n]+\s*using:\s*[''"]?composite[''"]?') {
     $actionType = 'composite'
-} elseif ($content -match 'runs:\s*\n\s*using:\s*[''"]?docker[''"]?') {
+} elseif ($content -match 'runs:\s*[\r\n]+\s*using:\s*[''"]?docker[''"]?') {
     $actionType = 'docker'
-} elseif ($content -match 'runs:\s*\n\s*using:\s*[''"]?node') {
+} elseif ($content -match 'runs:\s*[\r\n]+\s*using:\s*[''"]?node') {
     $actionType = 'javascript'
 }
 

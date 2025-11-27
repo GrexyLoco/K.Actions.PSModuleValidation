@@ -196,6 +196,7 @@ jobs:
           $version = '${{ steps.determine-version.outputs.final-version }}'
           $bumpType = '${{ steps.determine-version.outputs.bump-type }}'
           $currentVersion = '${{ steps.version.outputs.currentVersion }}'
+          $autoBumpType = '${{ steps.version.outputs.bumpType }}'
           
           $statusIcon = if ($shouldRelease -eq 'true') { '✅ Ready' } else { 'ℹ️ No Release' }
           $headerStatus = if ($shouldRelease -eq 'true') { '✅ Ready for Release' } else { 'ℹ️ No Release Required' }
@@ -214,11 +215,63 @@ jobs:
           "@
           
           if ($shouldRelease -ne 'true') {
+            # Determine reason for no release based on auto-detected bump type
+            # bumpType = 'none' means no commits since last tag (tag points to HEAD)
+            $noCommits = $autoBumpType -eq 'none'
+            
+            if ($noCommits) {
+              $reasonTitle = '🔍 **Why No Release?** No commits since last tag'
+              $reasonExplanation = @"
+          
+          The last tag (``$currentVersion``) points directly to HEAD - there are **no new commits** to release.
+          
+          **This happens when:**
+          - You just created a release (tag is on HEAD)
+          - Workflow was re-triggered without new code changes
+          - Only non-code files changed (``**.md``, ``docs/**`` are ignored)
+          "@
+            } else {
+              $reasonTitle = '🔍 **Why No Release?** No semantic version keywords detected'
+              $reasonExplanation = @"
+          
+          Commits were found but none triggered a version bump. This can happen if commits don't follow
+          the expected keyword patterns.
+          "@
+            }
+            
             $summary += @"
           
-          > ℹ️ **No Release Required**
-          > No semantic version changes detected since last tag.
-          > Use manual workflow dispatch with ``force-release`` to create a release anyway.
+          > $reasonTitle
+          > $reasonExplanation
+          
+          ### 📖 Version Detection Keywords
+          
+          Commits are analyzed for version bump keywords. **Default: PATCH** (commits without keywords).
+          
+          | Bump Type | Commit Keywords | Examples |
+          |-----------|-----------------|----------|
+          | **🔴 MAJOR** | ``BREAKING``, ``BREAKING CHANGE``, ``MAJOR`` (uppercase) | ``BREAKING: API change`` |
+          | **🟡 MINOR** | ``feat:``, ``feature:`` (prefix) or ``FEATURE``, ``FEAT``, ``MINOR`` (uppercase) | ``feat: add new endpoint`` |
+          | **🟢 PATCH** | ``fix:``, ``bugfix:``, ``docs:``, ``chore:``, ``refactor:``, ``perf:``, ``test:``, ``ci:`` | ``fix: null reference`` |
+          | **⚪ NONE** | No commits since last tag | Tag points to HEAD |
+          
+          ### 🌿 Branch Influence
+          
+          Branch names can **upgrade** (never downgrade) the detected bump type:
+          
+          | Branch Pattern | Effect |
+          |----------------|--------|
+          | ``feature/*``, ``feat/*`` | Upgrades to **MINOR** minimum |
+          | ``major/*``, ``breaking/*`` | Upgrades to **MAJOR** minimum |
+          | Others (``main``, ``master``, ``fix/*``) | No override |
+          
+          ### 🔄 How to Force a Release
+          
+          | Method | How |
+          |--------|-----|
+          | **Manual Dispatch** | Workflow → Run workflow → Check ``force-release`` |
+          | **Version Override** | Workflow → Run workflow → Enter version (e.g., ``1.2.3``) |
+          | **Empty Commit** | ``git commit --allow-empty -m "fix: trigger release"`` |
           
           "@
           }

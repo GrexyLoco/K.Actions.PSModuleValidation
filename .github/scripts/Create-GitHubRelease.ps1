@@ -102,7 +102,7 @@ if ($smartagrAvailable) {
     # ─────────────────────────────────────────────────────────────────────────
     # Fallback: gh CLI
     # ─────────────────────────────────────────────────────────────────────────
-    Write-Information "Using gh CLI for release creation"
+    Write-Host "Using gh CLI for release creation"
     
     $timestamp = (Get-Date).ToUniversalTime().ToString('MMMM dd, yyyy \a\t HH:mm UTC')
     $releaseNotes = @"
@@ -127,7 +127,7 @@ if ($smartagrAvailable) {
     # Delete existing release if exists
     $null = gh release view $releaseTag 2>&1
     if ($LASTEXITCODE -eq 0) {
-        Write-Information "⚠️ Deleting existing release"
+        Write-Host "⚠️ Deleting existing release"
         gh release delete $releaseTag --yes 2>$null
         git tag -d $releaseTag 2>$null
         git push origin --delete $releaseTag 2>$null
@@ -138,7 +138,7 @@ if ($smartagrAvailable) {
     $title = if ($isPrerelease) { "🧪 Prerelease $releaseTag" } else { "🚀 $ActionName $releaseTag" }
 
     # Step 1: Create base tag
-    Write-Information "Creating base tag $releaseTag"
+    Write-Host "Creating base tag $releaseTag"
     git config user.name "github-actions[bot]"
     git config user.email "github-actions[bot]@users.noreply.github.com"
     git tag -a $releaseTag -m "Release $releaseTag"
@@ -149,7 +149,7 @@ if ($smartagrAvailable) {
     }
 
     # Step 2: Create draft release
-    Write-Information "Creating draft release"
+    Write-Host "Creating draft release"
     $ghArgs = @('release', 'create', $releaseTag, '--title', $title, '--notes-file', 'release_notes.md', '--generate-notes', '--draft')
     if ($isPrerelease) { $ghArgs += '--prerelease' }
     

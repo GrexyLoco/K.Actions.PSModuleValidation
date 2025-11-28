@@ -1,5 +1,13 @@
 # K.Actions.PSModuleValidation
 
+<!-- AUTO-GENERATED BADGES - DO NOT EDIT MANUALLY -->
+## 📊 Status
+
+![Quality Gate](https://img.shields.io/badge/Quality_Gate-passing-brightgreen?logo=githubactions) ![Release](https://img.shields.io/badge/Release-v1.7.0-blue?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
+
+> 🕐 **Last Updated:** 2025-11-28 00:31:26 UTC | **Action:** `K.Actions.PSModuleValidation`
+<!-- END AUTO-GENERATED BADGES -->
+
 [![GitHub](https://img.shields.io/badge/GitHub-Actions-blue?logo=github)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation)
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)](https://docs.microsoft.com/en-us/powershell/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

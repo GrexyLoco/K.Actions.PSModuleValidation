@@ -3,9 +3,9 @@
 <!-- AUTO-GENERATED BADGES - DO NOT EDIT MANUALLY -->
 ## 📊 Status
 
-![Quality Gate](https://img.shields.io/badge/Quality_Gate-failing-red?logo=githubactions) ![Release](https://img.shields.io/badge/Release-none-lightgrey?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
+![Quality Gate](https://img.shields.io/badge/Quality_Gate-passing-brightgreen?logo=githubactions) ![Release](https://img.shields.io/badge/Release-v1.8.0-blue?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
 
-> 🕐 **Last Updated:** 2025-11-28 01:30:38 UTC | **Action:** `K.Actions.PSModuleValidation`
+> 🕐 **Last Updated:** 2025-11-28 01:46:29 UTC | **Action:** `K.Actions.PSModuleValidation`
 <!-- END AUTO-GENERATED BADGES -->
 
 [![GitHub](https://img.shields.io/badge/GitHub-Actions-blue?logo=github)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation)
@@ -15,9 +15,9 @@
 <!-- AUTO-GENERATED BADGES - DO NOT EDIT MANUALLY -->
 ## 📊 Status
 
-![Quality Gate](https://img.shields.io/badge/Quality_Gate-failing-red?logo=githubactions) ![Release](https://img.shields.io/badge/Release-none-lightgrey?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
+![Quality Gate](https://img.shields.io/badge/Quality_Gate-passing-brightgreen?logo=githubactions) ![Release](https://img.shields.io/badge/Release-v1.8.0-blue?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
 
-> 🕐 **Last Updated:** 2025-11-28 01:30:38 UTC | **Action:** `K.Actions.PSModuleValidation`
+> 🕐 **Last Updated:** 2025-11-28 01:46:29 UTC | **Action:** `K.Actions.PSModuleValidation`
 <!-- END AUTO-GENERATED BADGES -->
 
 Comprehensive validation action for PowerShell modules featuring security scans, code quality analysis, and automated testing with enterprise-grade reporting.

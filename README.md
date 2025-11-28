@@ -4,17 +4,13 @@
 [![PowerShell](https://img.shields.io/badge/PowerShell-5.1%2B-blue?logo=powershell)](https://docs.microsoft.com/en-us/powershell/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<!-- AUTO-GENERATED BADGES - DO NOT EDIT MANUALLY -->
+## 📊 Status
 
-<!-- AUTO-GENERATED TEST BADGES - DO NOT EDIT MANUALLY -->
-## 🧪 Current Test Status
+![Quality Gate](https://img.shields.io/badge/Quality_Gate-pending-lightgrey?logo=githubactions) ![Release](https://img.shields.io/badge/Release-none-lightgrey?logo=github) [![CI](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml/badge.svg)](https://github.com/GrexyLoco/K.Actions.PSModuleValidation/actions/workflows/release.yml)
 
-![Tests](https://img.shields.io/badge/Tests-failing-red) ![Security](https://img.shields.io/badge/Security-failing-red) ![Integration](https://img.shields.io/badge/Integration-failing-red) ![Cross-Platform](https://img.shields.io/badge/Cross--Platform-failing-red)
-
-### Platform Compatibility
-![Ubuntu](https://img.shields.io/badge/Ubuntu_22.04-issues-orange) ![Windows](https://img.shields.io/badge/Windows_2022-issues-orange)
-
-> 📊 **Status**: failing | **Updated**: 2025-08-19 01:11:54 UTC | **Run**: #6 | **Auto-generated**
-<!-- END AUTO-GENERATED TEST BADGES -->
+> 🕐 **Last Updated:** Pending first pipeline run | **Action:** `K.Actions.PSModuleValidation`
+<!-- END AUTO-GENERATED BADGES -->
 
 Comprehensive validation action for PowerShell modules featuring security scans, code quality analysis, and automated testing with enterprise-grade reporting.
 
